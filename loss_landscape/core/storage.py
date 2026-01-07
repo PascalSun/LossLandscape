@@ -1,0 +1,308 @@
+"""
+LandscapeStorage - DuckDB数据持久化模块
+"""
+
+import duckdb
+import os
+from typing import Dict, Any, Optional, List
+import numpy as np
+
+
+class LandscapeStorage:
+    """
+    使用DuckDB存储Loss Landscape数据。
+    
+    数据格式：
+    - 表: landscape_points
+    - 字段: epoch (int), x (float), y (float), loss (float), is_trajectory (bool)
+    """
+    
+    def __init__(self, db_path: str, mode: str = 'create'):
+        """
+        初始化存储实例。
+        
+        Args:
+            db_path: DuckDB文件路径（.duckdb或.landscape）
+            mode: 'create' 创建新文件，'append' 追加到现有文件
+        """
+        self.db_path = db_path
+        self.mode = mode
+        
+        # 确保目录存在
+        db_dir = os.path.dirname(os.path.abspath(db_path))
+        if db_dir:  # 如果路径包含目录
+            os.makedirs(db_dir, exist_ok=True)
+        
+        # 连接数据库
+        if mode == 'create' and os.path.exists(db_path):
+            os.remove(db_path)  # 创建模式：删除旧文件
+        
+        self.conn = duckdb.connect(db_path)
+        self._initialize_schema()
+        
+    def _initialize_schema(self):
+        """初始化数据库表结构"""
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS landscape_points (
+                epoch INTEGER,
+                x REAL,
+                y REAL,
+                z REAL,
+                loss REAL,
+                is_trajectory BOOLEAN
+            )
+        """)
+        
+        # 创建索引以提高查询性能
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_epoch ON landscape_points(epoch)
+        """)
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_trajectory ON landscape_points(is_trajectory)
+        """)
+    
+    def save_surface(self, surface_data: Dict[str, Any]):
+        """
+        保存表面数据到DuckDB。
+        
+        Args:
+            surface_data: build_surface()返回的字典
+        """
+        X = np.array(surface_data['X'])
+        Y = np.array(surface_data['Y'])
+        loss_grid = np.array(surface_data['loss_grid_2d'])
+        
+        grid_size = len(X)
+        epoch = surface_data.get('epoch', 0)  # 表面数据默认epoch=0
+        
+        # 准备批量插入数据
+        data = []
+        for i in range(grid_size):
+            for j in range(grid_size):
+                data.append(
+                    [
+                        epoch,
+                        float(X[i, j]),
+                        float(Y[i, j]),
+                        None,  # z坐标（3D体积使用）
+                        float(loss_grid[i, j]),
+                        False,  # is_trajectory
+                    ]
+                )
+        
+        # 批量插入
+        if data:
+            self.conn.executemany(
+                "INSERT INTO landscape_points (epoch, x, y, z, loss, is_trajectory) VALUES (?, ?, ?, ?, ?, ?)",
+                data
+            )
+            self.conn.commit()
+
+    def save_volume(self, volume_data: Dict[str, Any]):
+        """
+        保存3D体积数据到DuckDB。
+        
+        Args:
+            volume_data: Explorer.build_volume() 返回的字典
+        """
+        X = np.array(volume_data["X"])
+        Y = np.array(volume_data["Y"])
+        Z = np.array(volume_data["Z"])
+        loss_grid = np.array(volume_data["loss_grid_3d"])
+
+        if X.shape != Y.shape or X.shape != Z.shape or X.shape != loss_grid.shape:
+            raise ValueError("X, Y, Z, loss_grid_3d 形状必须一致")
+
+        grid_size = X.shape[0]
+        epoch = volume_data.get("epoch", 0)
+
+        data = []
+        for i in range(grid_size):
+            for j in range(grid_size):
+                for k in range(grid_size):
+                    data.append(
+                        [
+                            epoch,
+                            float(X[i, j, k]),
+                            float(Y[i, j, k]),
+                            float(Z[i, j, k]),
+                            float(loss_grid[i, j, k]),
+                            False,  # is_trajectory
+                        ]
+                    )
+
+        if data:
+            self.conn.executemany(
+                "INSERT INTO landscape_points (epoch, x, y, z, loss, is_trajectory) VALUES (?, ?, ?, ?, ?, ?)",
+                data,
+            )
+            self.conn.commit()
+    
+    def save_trajectory(self, trajectory_data: Dict[str, Any]):
+        """
+        保存轨迹数据到DuckDB。
+        
+        Args:
+            trajectory_data: build_trajectory()返回的字典
+        """
+        traj_1 = trajectory_data['traj_1']
+        traj_2 = trajectory_data['traj_2']
+        traj_3 = trajectory_data.get('traj_3')
+        epochs = trajectory_data['epochs']
+        
+        # 计算loss（需要重新评估，这里先设为None，后续可以优化）
+        # 为了简化，我们假设loss已经在其他地方计算
+        losses = trajectory_data.get('losses', [None] * len(traj_1))
+        
+        # 准备批量插入数据
+        data = []
+        for i, epoch in enumerate(epochs):
+            data.append([
+                int(epoch),
+                float(traj_1[i]),
+                float(traj_2[i]),
+                float(traj_3[i]) if traj_3 is not None and i < len(traj_3) else None,  # z坐标
+                float(losses[i]) if losses[i] is not None else None,
+                True,  # is_trajectory
+            ])
+        
+        # 批量插入
+        if data:
+            self.conn.executemany(
+                "INSERT INTO landscape_points (epoch, x, y, z, loss, is_trajectory) VALUES (?, ?, ?, ?, ?, ?)",
+                data
+            )
+            self.conn.commit()
+    
+    def close(self):
+        """关闭连接并刷新数据"""
+        self.conn.close()
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        return False
+    
+    def export_for_frontend(self, output_path: Optional[str] = None) -> Dict[str, Any]:
+        """
+        导出数据为前端可用的格式（兼容现有前端的数据结构）。
+        
+        Args:
+            output_path: 可选，如果提供则保存为JSON文件
+            
+        Returns:
+            包含X, Y, loss_grid_2d等字段的字典
+        """
+        # 查询二维表面数据（z为空）
+        surface_df = self.conn.execute(
+            """
+            SELECT x, y, loss, epoch
+            FROM landscape_points
+            WHERE is_trajectory = FALSE AND z IS NULL
+            ORDER BY epoch, x, y
+        """
+        ).df()
+        
+        # 查询轨迹数据
+        trajectory_df = self.conn.execute(
+            """
+            SELECT epoch, x, y, z, loss
+            FROM landscape_points
+            WHERE is_trajectory = TRUE
+            ORDER BY epoch
+        """
+        ).df()
+        
+        # 构建2D网格数据
+        if len(surface_df) > 0:
+            # 获取唯一的x和y值
+            unique_x = sorted(surface_df['x'].unique())
+            unique_y = sorted(surface_df['y'].unique())
+            
+            grid_size = len(unique_x)
+            
+            # 构建网格
+            X = np.zeros((grid_size, grid_size))
+            Y = np.zeros((grid_size, grid_size))
+            loss_grid = np.zeros((grid_size, grid_size))
+            
+            for idx, row in surface_df.iterrows():
+                i = unique_x.index(row['x'])
+                j = unique_y.index(row['y'])
+                X[i, j] = row['x']
+                Y[i, j] = row['y']
+                loss_grid[i, j] = row['loss']
+            
+            result = {
+                "X": X.tolist(),
+                "Y": Y.tolist(),
+                "loss_grid_2d": loss_grid.tolist(),
+                "baseline_loss": float(loss_grid.min()),
+                "grid_size": grid_size,
+                "mode": "2d",
+            }
+        else:
+            result = {
+                "X": [],
+                "Y": [],
+                "loss_grid_2d": [],
+                "baseline_loss": 0.0,
+                "grid_size": 0,
+                "mode": "2d",
+            }
+
+        # 查询并构建3D体积数据（z不为空）
+        volume_df = self.conn.execute(
+            """
+            SELECT x, y, z, loss, epoch
+            FROM landscape_points
+            WHERE is_trajectory = FALSE AND z IS NOT NULL
+            ORDER BY epoch, x, y, z
+        """
+        ).df()
+
+        if len(volume_df) > 0:
+            unique_x = sorted(volume_df["x"].unique())
+            unique_y = sorted(volume_df["y"].unique())
+            unique_z = sorted(volume_df["z"].unique())
+
+            nx = len(unique_x)
+            ny = len(unique_y)
+            nz = len(unique_z)
+
+            X3 = np.zeros((nx, ny, nz))
+            Y3 = np.zeros((nx, ny, nz))
+            Z3 = np.zeros((nx, ny, nz))
+            loss_grid_3d = np.zeros((nx, ny, nz))
+
+            for _, row in volume_df.iterrows():
+                i = unique_x.index(row["x"])
+                j = unique_y.index(row["y"])
+                k = unique_z.index(row["z"])
+                X3[i, j, k] = row["x"]
+                Y3[i, j, k] = row["y"]
+                Z3[i, j, k] = row["z"]
+                loss_grid_3d[i, j, k] = row["loss"]
+
+            result["Z"] = Z3.tolist()
+            result["loss_grid_3d"] = loss_grid_3d.tolist()
+
+        # 添加轨迹数据
+        if len(trajectory_df) > 0:
+            result["trajectory_data"] = {
+                "traj_1": trajectory_df["x"].tolist(),
+                "traj_2": trajectory_df["y"].tolist(),
+                "traj_3": trajectory_df["z"].tolist(),
+                "epochs": trajectory_df["epoch"].tolist(),
+            }
+        
+        # 保存为JSON（如果提供路径）
+        if output_path:
+            import json
+            with open(output_path, 'w') as f:
+                json.dump(result, f, indent=2)
+        
+        return result
+

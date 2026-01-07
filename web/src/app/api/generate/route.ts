@@ -1,0 +1,141 @@
+/**
+ * API route to generate loss landscape
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { generateLossLandscape, GenerateLandscapeOptions } from '@/lib/python-bridge';
+import { saveLossLandscape } from '@/lib/db';
+import { npzToJson } from '@/lib/npz';
+import { existsSync } from 'fs';
+import path from 'path';
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const options: GenerateLandscapeOptions = {
+      config: body.config,
+      run: body.run,
+      checkpoint: body.checkpoint,
+      mode: body.mode || '2d',
+      gridSize: body.gridSize || 50,
+      direction: body.direction || 'auto',
+      rangeScale: body.rangeScale || 1.0,
+      maxBatches: body.maxBatches,
+    };
+
+    // Generate loss landscape
+    const result = await generateLossLandscape(options);
+
+    if (!result.success) {
+      return NextResponse.json(
+        { error: result.error || 'Failed to generate loss landscape' },
+        { status: 500 }
+      );
+    }
+
+    // Load the generated data
+    if (result.dataFile) {
+      // Load .npz file and convert to JSON
+      const data = await npzToJson(result.dataFile);
+      
+      // Transform trajectory data from npz format to expected format
+      const trajectory_data = (data.trajectory_1 && data.trajectory_2) ? {
+        traj_1: data.trajectory_1,
+        traj_2: data.trajectory_2,
+        traj_3: data.trajectory_3,
+        epochs: data.trajectory_epochs || [],
+      } : undefined;
+      
+      // Save to database
+      // Ensure run_dir is a string (it might be a Path object or undefined)
+      const runDirStr = options.run ? String(options.run) : undefined;
+      const repoRoot =
+        process.env.REPO_ROOT || process.cwd().replace(/\/app$/, '');
+
+      // If the request is "from run", also persist the resolved config path from that run
+      // so history can show "which config was used".
+      const configPathStr = (() => {
+        const direct = options.config ? String(options.config) : undefined;
+        if (direct) return direct;
+        if (!runDirStr) return undefined;
+
+        const runAbs = path.isAbsolute(runDirStr)
+          ? runDirStr
+          : path.join(repoRoot, runDirStr);
+
+        const candidates = [
+          'config_resolved.yaml',
+          'config_resolved.yml',
+          'config.yaml',
+          'config.yml',
+        ].map((name) => path.join(runAbs, name));
+
+        const foundAbs = candidates.find((p) => existsSync(p));
+        if (!foundAbs) return undefined;
+
+        // Store relative path when possible (nicer display, portable)
+        const rel = path.relative(repoRoot, foundAbs);
+        return rel.startsWith('..') ? foundAbs : rel;
+      })();
+      
+      console.log('[generate/route] Saving to database:', {
+        config_path: configPathStr,
+        run_dir: runDirStr,
+        mode: options.mode || '2d',
+        hasTrajectory: !!trajectory_data,
+      });
+      
+      let id: number;
+      try {
+        id = await saveLossLandscape({
+          config_path: configPathStr,
+          run_dir: runDirStr,
+          mode: options.mode || '2d',
+          direction: options.direction || 'auto',
+          grid_size: options.gridSize || 50,
+          X: data.X,
+          Y: data.Y,
+          Z: data.Z,
+          loss_grid_2d: data.loss_grid_2d,
+          loss_grid_3d: data.loss_grid_3d,
+          baseline_loss: data.baseline_loss,
+          trajectory_data,
+          skipDuplicateCheck: true, // Always create new record for generate API
+        });
+        console.log('[generate/route] Saved to database with id:', id);
+      } catch (saveError: any) {
+        console.error('[generate/route] Failed to save to database:', saveError);
+        // Continue even if save fails, but log the error
+        throw new Error(`Failed to save to database: ${saveError.message}`);
+      }
+
+      // Return normalized data for frontend
+      const normalizedData = {
+        ...data,
+        trajectory_1: data.trajectory_1,
+        trajectory_2: data.trajectory_2,
+        trajectory_3: data.trajectory_3,
+        trajectory_epochs: data.trajectory_epochs,
+      };
+
+      return NextResponse.json({
+        success: true,
+        id,
+        outputDir: result.outputDir,
+        dataFile: result.dataFile,
+        data: normalizedData,
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      outputDir: result.outputDir,
+    });
+  } catch (error: any) {
+    console.error('API error:', error);
+    return NextResponse.json(
+      { error: error.message || 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}

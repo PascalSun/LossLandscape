@@ -1,0 +1,63 @@
+[project]
+name = "loss-landscape"
+version = "0.1.0"
+description = "通用 Loss Landscape 自动化分析平台"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "LossViz Team"}
+]
+keywords = ["loss landscape", "visualization", "deep learning", "pytorch"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+
+dependencies = [
+    "torch>=1.9.0",
+    "torchvision>=0.10.0",
+    "numpy>=1.20.0",
+    "duckdb>=0.9.0",
+    "pandas>=1.3.0",
+    "scikit-learn>=1.0.0",
+    "loguru>=0.7.0",
+    "click>=8.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "flake8>=7.2.0",
+]
+
+[project.scripts]
+# Backward/alias command names for convenience
+losslandscape = "loss_landscape.cli:cli"
+loss-landscape = "loss_landscape.cli:cli"
+loss_landscape = "loss_landscape.cli:cli"
+lossvis = "loss_landscape.cli:cli"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "flake8>=7.2.0",
+]
+
+[tool.black]
+line-length = 100
+target-version = ['py39', 'py310', 'py311']
+
