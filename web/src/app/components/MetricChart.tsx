@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
+import { useTheme } from '../theme';
 
 export type MetricChartPoint = number | null | undefined;
 
@@ -24,12 +25,24 @@ export default function MetricChart({
   valueLabel = 'loss',
   fillArea = true,
 }: MetricChartProps) {
+  const { theme } = useTheme();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<{ i: number; x: number; y: number } | null>(null);
   const hoverRef = useRef<{ i: number; x: number; y: number } | null>(null);
   const renderRef = useRef<(() => void) | null>(null);
   const rafRef = useRef<number | null>(null);
+
+  const chartTheme = useMemo(() => ({
+    background: theme === 'dark' ? '#1a1f26' : '#fcfdff',
+    grid: theme === 'dark' ? 'rgba(148, 163, 184, 0.1)' : 'rgba(59, 130, 246, 0.06)',
+    textMuted: theme === 'dark' ? '#94a3b8' : '#94a3b8',
+    textPrimary: theme === 'dark' ? '#e2e8f0' : '#334155',
+    tooltipBg: theme === 'dark' ? 'rgba(26, 31, 38, 0.95)' : 'rgba(252, 253, 255, 0.95)',
+    tooltipText: theme === 'dark' ? '#cbd5e1' : '#64748b',
+    tooltipBorder: theme === 'dark' ? 'rgba(148, 163, 184, 0.15)' : 'rgba(59, 130, 246, 0.12)',
+    dotFill: theme === 'dark' ? '#0f1419' : '#fcfdff'
+  }), [theme]);
 
   const data = useMemo(() => {
     if (!epochs?.length) return null;
@@ -100,7 +113,7 @@ export default function MetricChart({
       const toY = (v: number) => padding.top + ((data.maxV - v) / data.range) * chartH;
 
       // --- Grid & Axes ---
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.06)';
+      ctx.strokeStyle = chartTheme.grid;
       ctx.lineWidth = 1;
       ctx.beginPath();
       
@@ -114,7 +127,7 @@ export default function MetricChart({
       ctx.stroke();
 
       // --- Y Axis Labels ---
-      ctx.fillStyle = '#94a3b8'; // text-muted
+      ctx.fillStyle = chartTheme.textMuted; // text-muted
       ctx.font = '500 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace';
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
@@ -160,7 +173,7 @@ export default function MetricChart({
       }
 
       // --- Title & Last Value ---
-      ctx.fillStyle = '#1e293b'; // text-primary
+      ctx.fillStyle = chartTheme.textPrimary; // text-primary
       ctx.font = '600 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
@@ -186,7 +199,7 @@ export default function MetricChart({
         ctx.setLineDash([]);
 
         // Highlight dot
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = chartTheme.dotFill;
         ctx.strokeStyle = color;
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -208,7 +221,7 @@ export default function MetricChart({
         rafRef.current = null;
       }
     };
-  }, [color, data, height, title, valueLabel, fillArea]);
+  }, [color, data, height, title, valueLabel, fillArea, chartTheme]);
 
   const scheduleRender = () => {
     if (!renderRef.current) return;
@@ -270,7 +283,7 @@ export default function MetricChart({
         height,
         borderRadius: '12px',
         border: '1px solid var(--border)',
-        background: '#fff', // Pure white card
+        background: chartTheme.background,
         position: 'relative',
         cursor: 'crosshair',
         boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
@@ -289,17 +302,17 @@ export default function MetricChart({
             top: 24,
             pointerEvents: 'none',
             fontSize: '11px',
-            color: '#475569',
-            background: 'rgba(255,255,255,0.9)',
+            color: chartTheme.tooltipText,
+            background: chartTheme.tooltipBg,
             padding: '2px 6px',
             borderRadius: '4px',
-            border: '1px solid var(--border)',
+            border: `1px solid ${chartTheme.tooltipBorder}`,
             boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
             zIndex: 10,
           }}
         >
           <span style={{ fontWeight: 600 }}>Epoch {hoveredPoint.epoch}</span>
-          <span style={{ margin: '0 4px', color: '#cbd5e1' }}>|</span>
+          <span style={{ margin: '0 4px', color: chartTheme.textMuted }}>|</span>
           <span style={{ fontWeight: 600, color: color }}>{hoveredPoint.value.toExponential(4)}</span>
         </div>
       )}

@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
 import { useI18n } from './i18n';
+import { useTheme } from './theme';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import MetricChart from './components/MetricChart';
 
@@ -34,6 +35,13 @@ type GenerateResponse =
 
 export default function Page() {
   const { t } = useI18n();
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+  
+  // Theme-aware color helper
+  const getThemeColor = (lightColor: string, darkColor: string) => {
+    return isDark ? darkColor : lightColor;
+  };
   
   const [selectedRun, setSelectedRun] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -71,11 +79,8 @@ export default function Page() {
   const [history, setHistory] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   
-  // Metadata section expand/collapse state
-  const [expandedMetadataSections, setExpandedMetadataSections] = useState<Set<string>>(new Set([
-    'Experiment', 'Dataset', 'Model', 'Training', 'Training Statistics', 
-    'Loss Function', 'Landscape Generation', 'System Information'
-  ]));
+  // Metadata section expand/collapse state - all sections default to collapsed
+  const [expandedMetadataSections, setExpandedMetadataSections] = useState<Set<string>>(new Set());
 
   async function refreshHistory() {
     setHistoryLoading(true);
@@ -283,9 +288,6 @@ export default function Page() {
   const renderRunTab = () => {
     return (
       <div>
-        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.6 }}>
-          {t.loadFromRunHint}
-        </div>
 
         <div className="formGroup" style={{ marginBottom: 16 }}>
           <label className="formLabel">
@@ -334,7 +336,7 @@ export default function Page() {
                 }}
                 onClick={() => setSelectedRun(r)}
               >
-                <span style={{ fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: 14, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {r}
                 </span>
                 <button
@@ -345,7 +347,7 @@ export default function Page() {
                     loadFromRun(r);
                   }}
                   disabled={loading}
-                  style={{ fontSize: 12, padding: '4px 12px', marginLeft: 8 }}
+                  style={{ fontSize: 13, padding: '4px 12px', marginLeft: 8 }}
                 >
                   Import
                 </button>
@@ -370,7 +372,7 @@ export default function Page() {
     return (
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+          <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>
             Previously generated landscapes
           </div>
           <button
@@ -410,16 +412,16 @@ export default function Page() {
                   background: 'var(--bg-history-item)',
                 }}
               >
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
                   ID: {h.id}
                 </div>
                 {h.run_dir && (
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>
                     Run: {h.run_dir}
                   </div>
                 )}
                 {h.mode && (
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
                     Mode: {h.mode}
                   </div>
                 )}
@@ -433,7 +435,7 @@ export default function Page() {
                     }
                   }}
                   disabled={loading || (!h.run_dir && !h.id)}
-                  style={{ fontSize: 12, padding: '4px 12px', width: '100%' }}
+                  style={{ fontSize: 13, padding: '4px 12px', width: '100%' }}
                 >
                   Load
                 </button>
@@ -448,7 +450,7 @@ export default function Page() {
   const renderUploadTab = () => {
     return (
       <div>
-        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.6 }}>
+        <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.7 }}>
           Upload a landscape file (.json, .landscape, or .npz)
         </div>
         <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -519,7 +521,7 @@ export default function Page() {
             fontFamily: '"SF Mono", "Monaco", "Inconsolata", "Roboto Mono", monospace',
             fontSize: 13,
             padding: '2px 6px',
-            background: 'rgba(59, 130, 246, 0.08)',
+                background: getThemeColor('rgba(59, 130, 246, 0.08)', 'rgba(148, 163, 184, 0.1)'),
             borderRadius: 4
           }}>
             {value.toLocaleString()}
@@ -535,11 +537,11 @@ export default function Page() {
               <div style={{ 
                 whiteSpace: 'pre-wrap', 
                 wordBreak: 'break-word', 
-                fontSize: 13, 
+                fontSize: 14, 
                 lineHeight: 1.9,
                 color: 'var(--text-primary)',
                 padding: '14px 16px',
-                background: 'rgba(0, 0, 0, 0.03)',
+                background: getThemeColor('rgba(59, 130, 246, 0.04)', 'rgba(148, 163, 184, 0.06)'),
                 borderRadius: 8,
                 border: '1px solid var(--border)',
                 fontFamily: 'inherit'
@@ -569,7 +571,7 @@ export default function Page() {
               color: 'var(--text-muted)', 
               fontStyle: 'italic',
               padding: '4px 8px',
-              background: 'rgba(0, 0, 0, 0.02)',
+              background: getThemeColor('rgba(59, 130, 246, 0.03)', 'rgba(148, 163, 184, 0.05)'),
               borderRadius: 4
             }}>
               [empty array]
@@ -582,7 +584,7 @@ export default function Page() {
             <span style={{ 
               color: 'var(--text-muted)',
               padding: '4px 8px',
-              background: 'rgba(0, 0, 0, 0.02)',
+              background: getThemeColor('rgba(59, 130, 246, 0.03)', 'rgba(148, 163, 184, 0.05)'),
               borderRadius: 4,
               fontStyle: 'italic'
             }}>
@@ -596,7 +598,7 @@ export default function Page() {
               <div key={`array-item-${idx}`} style={{ 
                 marginBottom: 8,
                 padding: '8px 12px',
-                background: idx % 2 === 0 ? 'rgba(0, 0, 0, 0.02)' : 'transparent',
+                background: idx % 2 === 0 ? getThemeColor('rgba(59, 130, 246, 0.03)', 'rgba(148, 163, 184, 0.05)') : 'transparent',
                 borderRadius: 6,
                 borderLeft: '3px solid var(--accent)'
               }}>
@@ -623,7 +625,7 @@ export default function Page() {
               color: 'var(--text-muted)', 
               fontStyle: 'italic',
               padding: '6px 12px',
-              background: 'rgba(0, 0, 0, 0.03)',
+              background: getThemeColor('rgba(59, 130, 246, 0.04)', 'rgba(148, 163, 184, 0.06)'),
               borderRadius: 6,
               fontSize: 12
             }}>
@@ -631,66 +633,117 @@ export default function Page() {
             </span>
           );
         }
+        // For top-level fields (depth === 0), display as rows
+        if (depth === 0) {
+          return (
+            <div style={{ marginLeft: 0, marginTop: 12, display: 'grid', gap: 12 }}>
+              {keys.map((key, idx) => (
+                <div key={`obj-key-${key}-${depth}`} style={{ 
+                  padding: '16px 18px',
+                  background: depth === 0 
+                    ? (idx % 2 === 0 ? getThemeColor('rgba(59, 130, 246, 0.03)', 'rgba(148, 163, 184, 0.05)') : getThemeColor('rgba(59, 130, 246, 0.02)', 'rgba(148, 163, 184, 0.03)'))
+                    : getThemeColor('rgba(59, 130, 246, 0.03)', 'rgba(148, 163, 184, 0.05)'),
+                  borderRadius: 10,
+                  border: '1px solid var(--border)',
+                  transition: 'all 0.2s ease',
+                  position: 'relative'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = depth === 0 
+                    ? 'rgba(249, 115, 22, 0.05)' 
+                    : getThemeColor('rgba(59, 130, 246, 0.05)', 'rgba(148, 163, 184, 0.08)');
+                  e.currentTarget.style.borderColor = depth === 0 
+                    ? 'rgba(249, 115, 22, 0.3)' 
+                    : 'var(--border)';
+                  e.currentTarget.style.transform = 'translateX(4px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = depth === 0 
+                    ? (idx % 2 === 0 ? getThemeColor('rgba(59, 130, 246, 0.03)', 'rgba(148, 163, 184, 0.05)') : getThemeColor('rgba(59, 130, 246, 0.02)', 'rgba(148, 163, 184, 0.03)'))
+                    : getThemeColor('rgba(59, 130, 246, 0.03)', 'rgba(148, 163, 184, 0.05)');
+                  e.currentTarget.style.borderColor = 'var(--border)';
+                  e.currentTarget.style.transform = 'translateX(0)';
+                }}
+                >
+                  {depth === 0 && (
+                    <div style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
+                      width: 3,
+                      background: 'linear-gradient(180deg, var(--accent) 0%, #fb923c 100%)',
+                      borderRadius: '10px 0 0 10px'
+                    }} />
+                  )}
+                  <div style={{ 
+                    fontWeight: 600, 
+                    color: depth === 0 ? 'var(--accent)' : 'var(--text-secondary)', 
+                    marginBottom: 10,
+                    fontSize: 14,
+                    textTransform: 'capitalize',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    paddingLeft: depth === 0 ? 8 : 0
+                  }}>
+                    <span style={{ 
+                      fontSize: 12,
+                      color: depth === 0 ? 'var(--accent)' : 'var(--text-muted)',
+                      fontWeight: 700
+                    }}>▶</span>
+                    {key.replace(/_/g, ' ')}
+                  </div>
+                  <div style={{ marginLeft: depth === 0 ? 20 : 16, marginTop: 4 }}>
+                    {renderValue(value[key], depth + 1)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        }
+        
+        // For nested objects (depth > 0), use the original layout
         return (
           <div style={{ marginLeft: 0, marginTop: 12, display: 'grid', gap: 12 }}>
             {keys.map((key, idx) => (
               <div key={`obj-key-${key}-${depth}`} style={{ 
                 padding: '16px 18px',
-                background: depth === 0 
-                  ? (idx % 2 === 0 ? 'rgba(0, 0, 0, 0.02)' : 'rgba(0, 0, 0, 0.01)')
-                  : 'rgba(0, 0, 0, 0.02)',
+                background: getThemeColor('rgba(59, 130, 246, 0.03)', 'rgba(148, 163, 184, 0.05)'),
                 borderRadius: 10,
                 border: '1px solid var(--border)',
                 transition: 'all 0.2s ease',
                 position: 'relative'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = depth === 0 
-                  ? 'rgba(249, 115, 22, 0.05)' 
-                  : 'rgba(0, 0, 0, 0.04)';
-                e.currentTarget.style.borderColor = depth === 0 
-                  ? 'rgba(249, 115, 22, 0.3)' 
-                  : 'var(--border)';
+                e.currentTarget.style.background = getThemeColor('rgba(59, 130, 246, 0.05)', 'rgba(148, 163, 184, 0.08)');
+                e.currentTarget.style.borderColor = 'var(--border)';
                 e.currentTarget.style.transform = 'translateX(4px)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = depth === 0 
-                  ? (idx % 2 === 0 ? 'rgba(0, 0, 0, 0.02)' : 'rgba(0, 0, 0, 0.01)')
-                  : 'rgba(0, 0, 0, 0.02)';
+                e.currentTarget.style.background = getThemeColor('rgba(59, 130, 246, 0.03)', 'rgba(148, 163, 184, 0.05)');
                 e.currentTarget.style.borderColor = 'var(--border)';
                 e.currentTarget.style.transform = 'translateX(0)';
               }}
               >
-                {depth === 0 && (
-                  <div style={{
-                    position: 'absolute',
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: 3,
-                    background: 'linear-gradient(180deg, var(--accent) 0%, #fb923c 100%)',
-                    borderRadius: '10px 0 0 10px'
-                  }} />
-                )}
                 <div style={{ 
                   fontWeight: 600, 
-                  color: depth === 0 ? 'var(--accent)' : 'var(--text-secondary)', 
+                  color: 'var(--text-secondary)', 
                   marginBottom: 10,
                   fontSize: 14,
                   textTransform: 'capitalize',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 8,
-                  paddingLeft: depth === 0 ? 8 : 0
+                  gap: 8
                 }}>
                   <span style={{ 
                     fontSize: 12,
-                    color: depth === 0 ? 'var(--accent)' : 'var(--text-muted)',
+                    color: 'var(--text-muted)',
                     fontWeight: 700
                   }}>▶</span>
                   {key.replace(/_/g, ' ')}
                 </div>
-                <div style={{ marginLeft: depth === 0 ? 20 : 16, marginTop: 4 }}>
+                <div style={{ marginLeft: 16, marginTop: 4 }}>
                   {renderValue(value[key], depth + 1)}
                 </div>
               </div>
@@ -715,18 +768,18 @@ export default function Page() {
           background: 'var(--bg-card)',
           borderRadius: 16,
           border: '1px solid var(--border)',
-          boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+          boxShadow: '0 2px 12px rgba(59, 130, 246, 0.05)',
           transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           position: 'relative',
           overflow: 'hidden'
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.transform = 'translateY(-4px)';
-          e.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.12)';
+          e.currentTarget.style.boxShadow = isDark ? '0 8px 24px rgba(0, 0, 0, 0.4)' : '0 8px 24px rgba(59, 130, 246, 0.1)';
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.transform = 'translateY(0)';
-          e.currentTarget.style.boxShadow = '0 2px 12px rgba(0, 0, 0, 0.06)';
+          e.currentTarget.style.boxShadow = isDark ? '0 2px 12px rgba(0, 0, 0, 0.25)' : '0 2px 12px rgba(59, 130, 246, 0.05)';
         }}
         >
           {/* Colored header bar - clickable */}
@@ -932,26 +985,84 @@ export default function Page() {
           </div>
         )}
 
-        {renderSection('Experiment', metadata.experiment)}
-        {renderSection('Dataset', metadata.dataset)}
-        {renderSection('Model', metadata.model)}
-        {renderSection('Training', metadata.training)}
-        {renderSection('Training Statistics', metadata.training_statistics)}
-        {renderSection('Loss Function', metadata.loss_function)}
-        {renderSection('Landscape Generation', metadata.landscape_generation)}
-        {renderSection('System Information', metadata.system)}
+        {/* Overview */}
+        <div style={{ marginBottom: 32 }}>
+          <div style={{
+            fontSize: 18,
+            fontWeight: 700,
+            color: 'var(--text-primary)',
+            marginBottom: 20,
+            paddingBottom: 12,
+            borderBottom: '2px solid var(--border)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8
+          }}>
+            <span style={{ fontSize: 20 }}>📋</span>
+            <span>Overview</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {renderSection('Experiment', metadata.experiment)}
+            {renderSection('Training Statistics', metadata.training_statistics)}
+          </div>
+        </div>
 
-        {/* Render any other top-level keys */}
-        {Object.keys(metadata).map((key) => {
-          const knownKeys = ['summary', 'experiment', 'dataset', 'model', 'training', 
-                            'training_statistics', 'loss_function', 'landscape_generation', 'system'];
-          if (knownKeys.includes(key)) return null;
-          return (
-            <div key={key}>
-              {renderSection(key.charAt(0).toUpperCase() + key.slice(1), metadata[key])}
-            </div>
-          );
-        })}
+        {/* Factors Directly Affecting Loss Landscape */}
+        <div style={{ marginBottom: 32 }}>
+          <div style={{
+            fontSize: 18,
+            fontWeight: 700,
+            color: 'var(--text-primary)',
+            marginBottom: 20,
+            paddingBottom: 12,
+            borderBottom: '2px solid var(--border)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8
+          }}>
+            <span style={{ fontSize: 20 }}>🎯</span>
+            <span>Factors Directly Affecting Loss Landscape</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {renderSection('Training', metadata.training)}
+            {renderSection('Dataset', metadata.dataset)}
+            {renderSection('Model', metadata.model)}
+            {renderSection('Loss Function', metadata.loss_function)}
+          </div>
+        </div>
+
+        {/* Meta Information */}
+        <div style={{ marginBottom: 32 }}>
+          <div style={{
+            fontSize: 18,
+            fontWeight: 700,
+            color: 'var(--text-primary)',
+            marginBottom: 20,
+            paddingBottom: 12,
+            borderBottom: '2px solid var(--border)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8
+          }}>
+            <span style={{ fontSize: 20 }}>ℹ️</span>
+            <span>Meta Information</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {renderSection('Landscape Generation', metadata.landscape_generation)}
+            {renderSection('System Information', metadata.system)}
+            {/* Render any other top-level keys - add to Meta Information section */}
+            {Object.keys(metadata).map((key) => {
+              const knownKeys = ['summary', 'experiment', 'dataset', 'model', 'training', 
+                                'training_statistics', 'loss_function', 'landscape_generation', 'system'];
+              if (knownKeys.includes(key)) return null;
+              return (
+                <div key={key}>
+                  {renderSection(key.charAt(0).toUpperCase() + key.slice(1), metadata[key])}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     );
   };
@@ -1239,13 +1350,13 @@ export default function Page() {
                     style={{
                       padding: '8px 12px',
                       borderRadius: 8,
-                      background: 'rgba(255,255,255,0.98)',
+                      background: 'var(--bg-glass-active)',
                       border: '1px solid rgba(249,115,22,0.7)',
                       color: 'var(--text-primary)',
-                      fontSize: 11,
+                      fontSize: 12,
                       lineHeight: 1.5,
                       maxWidth: 260,
-                      boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                      boxShadow: getThemeColor('0 4px 16px rgba(59, 130, 246, 0.1)', '0 4px 16px rgba(0, 0, 0, 0.3)'),
                       zIndex: 2000,
                     }}
                   >
@@ -1255,7 +1366,7 @@ export default function Page() {
                         marginBottom: 4,
                         textTransform: 'uppercase',
                         letterSpacing: '0.06em',
-                        fontSize: 10,
+                        fontSize: 11,
                         color: '#f97316',
                       }}
                     >
@@ -1265,7 +1376,7 @@ export default function Page() {
                     <Tooltip.Arrow
                       width={10}
                       height={6}
-                      style={{ fill: 'rgba(255,255,255,0.98)' }}
+                      style={{ fill: 'var(--bg-glass-active)' }}
                     />
                   </Tooltip.Content>
                 </Tooltip.Portal>
@@ -1474,14 +1585,14 @@ export default function Page() {
                 flexDirection: 'column',
                 gap: 16,
                 flexShrink: 0,
-                background: '#f8fafc', // Light grey background for panel
+                background: 'var(--bg-sidebar-tabs)', // Adapts to dark mode
                 borderRight: '1px solid var(--border)',
                 padding: 16,
                 overflowY: 'auto'
               }}>
                 <div style={{ paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
-                  <h3 style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', margin: 0 }}>Metrics</h3>
-                  <p style={{ fontSize: 11, color: '#64748b', margin: '4px 0 0' }}>Training progression</p>
+                  <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Metrics</h3>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0' }}>Training progression</p>
                 </div>
 
                 {hasTrain && (
@@ -1776,6 +1887,7 @@ export default function Page() {
                           }
                           baselineLoss={data.baseline_loss}
                           trajectory={sliceTrajectory?.projected}
+                          trajectoryHighlight={sliceTrajectory?.highlight}
                         />
                       )
                       : (
@@ -1884,6 +1996,7 @@ export default function Page() {
                           xLabel={sliceAxis === 'alpha' ? 'β' : 'α'}
                           planeLabel="γ"
                           trajectory={sliceTrajectory?.projected}
+                          trajectoryHighlight={sliceTrajectory?.highlight}
                         />
                       )
                   )
@@ -1971,7 +2084,7 @@ export default function Page() {
               }}
               onMouseDown={startSurfaceCardDrag}
             >
-              <div style={{ fontWeight: 700, fontSize: 13 }}>{t.viewSurface}</div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>{t.viewSurface}</div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <button
                   type="button"
@@ -1982,7 +2095,7 @@ export default function Page() {
                     border: surfaceMode === '2d' ? '2px solid var(--accent)' : '1px solid var(--border)',
                     background: surfaceMode === '2d' ? 'rgba(249,115,22,0.15)' : 'var(--bg-lang-toggle)',
                     color: 'var(--text-primary)',
-                    fontSize: 10,
+                    fontSize: 11,
                     fontWeight: 600,
                     cursor: 'pointer',
                     flex: 1,
@@ -1999,7 +2112,7 @@ export default function Page() {
                     border: surfaceMode === '3d' ? '2px solid var(--accent)' : '1px solid var(--border)',
                     background: surfaceMode === '3d' ? 'rgba(249,115,22,0.15)' : 'var(--bg-lang-toggle)',
                     color: 'var(--text-primary)',
-                    fontSize: 10,
+                    fontSize: 11,
                     fontWeight: 600,
                     cursor: 'pointer',
                     flex: 1,
@@ -2030,7 +2143,7 @@ export default function Page() {
                   backdropFilter: 'blur(10px)',
                   color: 'var(--text-primary)',
                   fontSize: 12,
-                  boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
+                  boxShadow: getThemeColor('0 2px 12px rgba(59, 130, 246, 0.08)', '0 2px 12px rgba(0, 0, 0, 0.25)'),
                   pointerEvents: 'auto',
                   zIndex: 20,
                   width: 180,
@@ -2039,7 +2152,7 @@ export default function Page() {
                 onMouseDown={startSliceCardDrag}
               >
                 <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{t.viewSlice}</div>
-                <div style={{ opacity: 0.8, fontSize: 11, fontFamily: 'monospace', marginBottom: 6 }}>
+                <div style={{ opacity: 0.8, fontSize: 12, fontFamily: 'monospace', marginBottom: 6 }}>
                   {sliceAxis === 'gamma'
                     ? (sliceMeta.zVals[sliceIndex] !== undefined
                         ? `${t.gamma} = ${sliceMeta.zVals[sliceIndex].toFixed(3)}`
@@ -2058,7 +2171,7 @@ export default function Page() {
                       border: sliceMode === '2d' ? '2px solid var(--accent)' : '1px solid var(--border)',
                       background: sliceMode === '2d' ? 'rgba(249,115,22,0.15)' : 'var(--bg-lang-toggle)',
                       color: 'var(--text-primary)',
-                      fontSize: 10,
+                      fontSize: 11,
                       fontWeight: 600,
                       cursor: 'pointer',
                       flex: 1,
@@ -2075,7 +2188,7 @@ export default function Page() {
                       border: sliceMode === '3d' ? '2px solid var(--accent)' : '1px solid var(--border)',
                       background: sliceMode === '3d' ? 'rgba(249,115,22,0.15)' : 'var(--bg-lang-toggle)',
                       color: 'var(--text-primary)',
-                      fontSize: 10,
+                      fontSize: 11,
                       fontWeight: 600,
                       cursor: 'pointer',
                       flex: 1,
@@ -2084,7 +2197,7 @@ export default function Page() {
                     3D
                   </button>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8, fontSize: 11, opacity: 0.85 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8, fontSize: 12, opacity: 0.85 }}>
                   <span style={{ fontWeight: 600 }}>Axis</span>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <button
@@ -2096,7 +2209,7 @@ export default function Page() {
                         border: sliceAxis === 'gamma' ? '2px solid #6ee7b7' : '1px solid var(--border)',
                       background: sliceAxis === 'gamma' ? 'rgba(110,231,183,0.15)' : 'var(--bg-lang-toggle)',
                       color: 'var(--text-primary)',
-                        fontSize: 10,
+                        fontSize: 11,
                         fontWeight: 600,
                         cursor: 'pointer',
                       }}
@@ -2112,7 +2225,7 @@ export default function Page() {
                         border: sliceAxis === 'alpha' ? '2px solid #60a5fa' : '1px solid var(--border)',
                         background: sliceAxis === 'alpha' ? 'rgba(96,165,250,0.15)' : 'var(--bg-lang-toggle)',
                         color: 'var(--text-primary)',
-                        fontSize: 10,
+                        fontSize: 11,
                         fontWeight: 600,
                         cursor: 'pointer',
                       }}
@@ -2128,7 +2241,7 @@ export default function Page() {
                         border: sliceAxis === 'beta' ? '2px solid #fb7185' : '1px solid var(--border)',
                         background: sliceAxis === 'beta' ? 'rgba(251,113,133,0.15)' : 'var(--bg-lang-toggle)',
                         color: 'var(--text-primary)',
-                        fontSize: 10,
+                        fontSize: 11,
                         fontWeight: 600,
                         cursor: 'pointer',
                       }}
@@ -2156,7 +2269,7 @@ export default function Page() {
                   backdropFilter: 'blur(10px)',
                   color: 'var(--text-primary)',
                   fontSize: 12,
-                    boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
+                    boxShadow: getThemeColor('0 2px 12px rgba(59, 130, 246, 0.08)', '0 2px 12px rgba(0, 0, 0, 0.25)'),
                     pointerEvents: 'auto',
                     zIndex: 20,
                 }}

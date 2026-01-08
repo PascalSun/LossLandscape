@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../i18n';
 import { getViridisColor } from '../lib/colormap';
+import { useTheme } from '../theme';
 import { HoverCard } from './HoverCard';
 
 interface LossLandscape2DProps {
@@ -85,6 +86,33 @@ export default function LossLandscape2D({
   planeLabel,
 }: LossLandscape2DProps) {
   const { t } = useI18n();
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+  const ui = useMemo(() => {
+    return isDark
+      ? {
+          panelBg: 'rgba(26, 31, 38, 0.85)',
+          panelBorder: 'rgba(148, 163, 184, 0.15)',
+          panelShadow: '0 12px 40px rgba(0, 0, 0, 0.4)',
+          text: '#e2e8f0',
+          surface: 'rgba(148, 163, 184, 0.06)',
+          surfaceBorder: 'rgba(148, 163, 184, 0.12)',
+          divider: 'rgba(148, 163, 184, 0.15)',
+          tooltipBg: 'rgba(26, 31, 38, 0.95)',
+          tooltipText: '#cbd5e1',
+        }
+      : {
+          panelBg: 'rgba(252, 253, 255, 0.9)',
+          panelBorder: 'rgba(59, 130, 246, 0.1)',
+          panelShadow: '0 12px 40px rgba(59, 130, 246, 0.08)',
+          text: '#334155',
+          surface: 'rgba(59, 130, 246, 0.04)',
+          surfaceBorder: 'rgba(59, 130, 246, 0.08)',
+          divider: 'rgba(59, 130, 246, 0.1)',
+          tooltipBg: 'rgba(252, 253, 255, 0.95)',
+          tooltipText: '#64748b',
+        };
+  }, [isDark]);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [useLog, setUseLog] = useState(true);
@@ -523,28 +551,40 @@ export default function LossLandscape2D({
           if (isClosest) {
             // Draw star for points extremely close to the slice
             ctx.fillStyle = `rgba(255, 215, 0, ${opacity})`; // gold color
-            drawStar(ctx, p.px, p.py, 5, radius * 1.5, radius * 0.7);
+            drawStar(ctx, p.px, p.py, 5, radius * 1.8, radius * 0.8); // Increased size
             ctx.fill();
 
             // Add glowing ring
             ctx.strokeStyle = `rgba(255, 255, 255, ${strokeOpacity})`;
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth = 2.0;
             ctx.stroke();
 
             // Outer glow
-            ctx.shadowColor = '#ffd700'; // gold glow
-            ctx.shadowBlur = 10;
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            ctx.shadowBlur = 4;
             ctx.stroke();
             ctx.shadowBlur = 0;
           } else {
-            // Standard circle for other points
-            ctx.fillStyle = `rgba(96, 165, 250, ${opacity})`; // blue highlight
+            // Use DIAMOND shape for other in-slab points to distinguish from projected circles
+            ctx.fillStyle = `rgba(0, 255, 255, ${opacity})`; // Cyan/Aqua for high visibility
+            
             ctx.beginPath();
-            ctx.arc(p.px, p.py, radius, 0, Math.PI * 2);
+            ctx.moveTo(p.px, p.py - radius * 1.2);
+            ctx.lineTo(p.px + radius * 1.2, p.py);
+            ctx.lineTo(p.px, p.py + radius * 1.2);
+            ctx.lineTo(p.px - radius * 1.2, p.py);
+            ctx.closePath();
             ctx.fill();
 
-            ctx.strokeStyle = `rgba(0,0,0,${strokeOpacity})`;
-            ctx.lineWidth = 1.5;
+            // Double stroke for maximum contrast on any background
+            // 1. White inner stroke
+            ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(1, strokeOpacity + 0.2)})`;
+            ctx.lineWidth = 2.0;
+            ctx.stroke();
+            
+            // 2. Black outer stroke
+            ctx.strokeStyle = `rgba(0, 0, 0, ${strokeOpacity})`;
+            ctx.lineWidth = 1.0;
             ctx.stroke();
           }
         }
@@ -672,14 +712,16 @@ export default function LossLandscape2D({
             padding: '14px 16px',
             borderRadius: 14,
             border: '2px solid rgba(251, 191, 36, 0.5)',
-            background: 'rgba(0,0,0,0.85)',
+            background: ui.tooltipBg,
             backdropFilter: 'blur(12px)',
-            color: 'white',
+            color: ui.tooltipText,
             fontSize: 12,
             lineHeight: 1.7,
             minWidth: 200,
             pointerEvents: 'none',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.5), 0 0 20px rgba(251, 191, 36, 0.2)',
+            boxShadow: isDark
+              ? '0 8px 24px rgba(0,0,0,0.5), 0 0 20px rgba(251, 191, 36, 0.2)'
+              : '0 8px 24px rgba(15,23,42,0.12), 0 0 18px rgba(251, 191, 36, 0.18)',
             zIndex: 1000,
           }}
         >
@@ -699,7 +741,7 @@ export default function LossLandscape2D({
               display: 'flex', 
               justifyContent: 'space-between',
               padding: '4px 0',
-              borderBottom: '1px solid rgba(255,255,255,0.1)',
+              borderBottom: `1px solid ${ui.surfaceBorder}`,
             }}>
               <span style={{ opacity: 0.8, fontWeight: 600 }}>{xLabel ?? 'α'}:</span> 
               <span style={{ fontWeight: 700, color: '#93c5fd' }}>{hover.x.toFixed(4)}</span>
@@ -749,15 +791,15 @@ export default function LossLandscape2D({
           transform: `translate(${legendPos.x}px, ${legendPos.y}px)`,
           padding: '18px 20px',
           borderRadius: 18,
-          border: '1px solid rgba(255,255,255,0.3)',
-          background: 'rgba(0,0,0,0.75)',
+          border: `1px solid ${ui.panelBorder}`,
+          background: ui.panelBg,
           backdropFilter: 'blur(12px)',
-          color: 'white',
+          color: ui.text,
           zIndex: 10,
           fontSize: 13,
           lineHeight: 1.6,
           width: 300,
-          boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+          boxShadow: ui.panelShadow,
           cursor: isDraggingLegend.current ? 'grabbing' : 'grab',
         }}
         onMouseDown={startLegendDrag}
@@ -789,21 +831,23 @@ export default function LossLandscape2D({
                 width: 24,
                 height: 160,
                 borderRadius: 12,
-                border: '2px solid rgba(255,255,255,0.4)',
+                border: `2px solid ${isDark ? 'rgba(255,255,255,0.35)' : 'rgba(15,23,42,0.22)'}`,
                 background: `linear-gradient(to top, ${Array.from({ length: 12 }, (_, i) => {
                   const t = i / 11;
                   const c = getViridisColor(t);
                   const rgb = `rgb(${c.r},${c.g},${c.b})`;
                   return rgb;
                 }).join(',')})`,
-                boxShadow: '0 4px 12px rgba(0,0,0,0.3), inset 0 0 20px rgba(255,255,255,0.1)',
+                boxShadow: isDark
+                  ? '0 4px 12px rgba(0,0,0,0.3), inset 0 0 20px rgba(255,255,255,0.1)'
+                  : '0 4px 12px rgba(15,23,42,0.10), inset 0 0 20px rgba(255,255,255,0.25)',
                 cursor: 'help',
                 position: 'relative',
               }}
             />
             <div style={{ 
               fontSize: 9, 
-              opacity: 0.6, 
+              opacity: isDark ? 0.6 : 0.75, 
               marginTop: 4,
               textAlign: 'center',
               lineHeight: 1.2,
@@ -816,8 +860,8 @@ export default function LossLandscape2D({
             <div style={{ 
               padding: '8px 10px',
               borderRadius: 8,
-              background: 'rgba(255,100,100,0.15)',
-              border: '1px solid rgba(255,100,100,0.3)',
+              background: isDark ? 'rgba(255,100,100,0.15)' : 'rgba(239,68,68,0.10)',
+              border: isDark ? '1px solid rgba(255,100,100,0.3)' : '1px solid rgba(239,68,68,0.22)',
             }}>
               <div style={{ fontSize: 10, opacity: 0.9, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>High Loss</div>
               <div style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#ff6b6b' }}>{fmtLoss(stats.zMax)}</div>
@@ -827,7 +871,7 @@ export default function LossLandscape2D({
               textAlign: 'center',
               padding: '6px 0',
               fontSize: 10,
-              opacity: 0.7,
+              opacity: isDark ? 0.7 : 0.8,
               fontStyle: 'italic',
             }}>
               ↓ Lower is better ↓
@@ -836,8 +880,8 @@ export default function LossLandscape2D({
             <div style={{ 
               padding: '8px 10px',
               borderRadius: 8,
-              background: 'rgba(100,255,150,0.15)',
-              border: '1px solid rgba(100,255,150,0.3)',
+              background: isDark ? 'rgba(100,255,150,0.15)' : 'rgba(16,185,129,0.10)',
+              border: isDark ? '1px solid rgba(100,255,150,0.3)' : '1px solid rgba(16,185,129,0.22)',
             }}>
               <div style={{ fontSize: 10, opacity: 0.9, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Low Loss</div>
               <div style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#51cf66' }}>{fmtLoss(stats.zMin)}</div>
@@ -846,7 +890,7 @@ export default function LossLandscape2D({
         </div>
 
         <div style={{ 
-          borderTop: '2px solid rgba(255,255,255,0.2)', 
+          borderTop: `2px solid ${ui.divider}`, 
           paddingTop: 14, 
           marginTop: 14, 
           display: 'grid', 
@@ -860,7 +904,7 @@ export default function LossLandscape2D({
               fontSize: 12,
               padding: '8px 10px',
               borderRadius: 8,
-              background: 'rgba(255,255,255,0.05)',
+              background: ui.surface,
             }}>
               <span style={{ opacity: 0.9, fontWeight: 600 }}>📍 Baseline Loss</span>
               <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#fbbf24' }}>{fmtLoss(baselineLoss)}</span>
@@ -875,8 +919,8 @@ export default function LossLandscape2D({
               fontSize: 12,
               padding: '8px 10px',
               borderRadius: 8,
-              background: 'rgba(255, 80, 80, 0.1)',
-              border: '1px solid rgba(255, 80, 80, 0.3)',
+              background: isDark ? 'rgba(255, 80, 80, 0.1)' : 'rgba(239, 68, 68, 0.08)',
+              border: isDark ? '1px solid rgba(255, 80, 80, 0.3)' : '1px solid rgba(239, 68, 68, 0.18)',
             }}>
               <div style={{ 
                 width: 24, 
@@ -896,16 +940,26 @@ export default function LossLandscape2D({
             fontSize: 12,
             padding: '8px 10px',
             borderRadius: 8,
-            background: 'rgba(255,255,255,0.05)',
+            background: ui.surface,
           }}>
             <span style={{ opacity: 0.9, fontWeight: 600 }}>Scale</span>
             <button
               type="button"
               onClick={() => setUseLog((v) => !v)}
               style={{
-                border: `2px solid ${useLog ? 'rgba(251, 191, 36, 0.5)' : 'rgba(255,255,255,0.3)'}`,
-                background: useLog ? 'rgba(251, 191, 36, 0.2)' : 'rgba(255,255,255,0.1)',
-                color: 'white',
+                border: `2px solid ${
+                  useLog
+                    ? 'rgba(251, 191, 36, 0.55)'
+                    : isDark
+                      ? 'rgba(255,255,255,0.30)'
+                      : 'rgba(15,23,42,0.18)'
+                }`,
+                background: useLog
+                  ? 'rgba(251, 191, 36, 0.20)'
+                  : isDark
+                    ? 'rgba(255,255,255,0.08)'
+                    : 'rgba(15,23,42,0.05)',
+                color: ui.text,
                 borderRadius: 8,
                 padding: '6px 14px',
                 cursor: 'pointer',
@@ -915,8 +969,20 @@ export default function LossLandscape2D({
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = useLog ? 'rgba(251, 191, 36, 0.3)' : 'rgba(255,255,255,0.15)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = useLog ? 'rgba(251, 191, 36, 0.2)' : 'rgba(255,255,255,0.1)'}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = useLog
+                  ? 'rgba(251, 191, 36, 0.28)'
+                  : isDark
+                    ? 'rgba(255,255,255,0.12)'
+                    : 'rgba(15,23,42,0.07)')
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = useLog
+                  ? 'rgba(251, 191, 36, 0.20)'
+                  : isDark
+                    ? 'rgba(255,255,255,0.08)'
+                    : 'rgba(15,23,42,0.05)')
+              }
             >
               {useLog ? '📊 Log' : '📈 Linear'}
             </button>

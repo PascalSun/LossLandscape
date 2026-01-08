@@ -5,6 +5,7 @@ import { Canvas } from '@react-three/fiber';
 import { Html, OrbitControls, Grid, PerspectiveCamera, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import { useI18n } from '../i18n';
+import { useTheme } from '../theme';
 import { getViridisColorNormalized } from '../lib/colormap';
 
 interface LossLandscape3DProps {
@@ -18,6 +19,12 @@ interface LossLandscape3DProps {
     traj_3?: number[];
     epochs: number[];
     losses?: number[];
+  };
+  trajectoryHighlight?: {
+    traj_1: number[];
+    traj_2: number[];
+    traj_3?: number[];
+    epochs: number[];
   };
   /**
    * Optional axis labels, so Slice view can repurpose the component for
@@ -400,7 +407,7 @@ function TrajectoryLine({
         
         return (
           <mesh key={i} position={points[i]}>
-            <sphereGeometry args={[radius, 16, 16]} />
+            <octahedronGeometry args={[radius * 1.2, 0]} />
             <meshStandardMaterial 
               color={color} 
               emissive={color}
@@ -413,7 +420,7 @@ function TrajectoryLine({
       {/* Start point marker (larger) */}
       {points[0] && (
         <mesh position={points[0]}>
-          <sphereGeometry args={[0.05, 20, 20]} />
+          <octahedronGeometry args={[0.07, 0]} />
           <meshStandardMaterial 
             color="#00ff00" 
             emissive="#00ff00"
@@ -425,7 +432,7 @@ function TrajectoryLine({
       {/* End point marker (larger) */}
       {points[points.length - 1] && (
         <mesh position={points[points.length - 1]}>
-          <sphereGeometry args={[0.05, 20, 20]} />
+          <octahedronGeometry args={[0.07, 0]} />
           <meshStandardMaterial 
             color="#ff0000" 
             emissive="#ff0000"
@@ -593,16 +600,118 @@ function fmtLoss(x: number) {
   return Number.isFinite(x) ? x.toExponential(3) : String(x);
 }
 
+function TrajectoryHighlight({
+  trajectoryHighlight,
+  X,
+  Y,
+  lossGrid,
+  norm,
+  viewEpoch,
+}: {
+  trajectoryHighlight: { traj_1: number[]; traj_2: number[]; epochs: number[] };
+  X: number[][];
+  Y: number[][];
+  lossGrid: number[][];
+  norm: Normalizer;
+  viewEpoch: number;
+}) {
+  const points = useMemo(() => {
+    if (!trajectoryHighlight || !trajectoryHighlight.traj_1) return [];
+    
+    const pts: THREE.Vector3[] = [];
+    const { traj_1, traj_2, epochs } = trajectoryHighlight;
+    const len = Math.min(traj_1.length, traj_2.length);
+    
+    // Bounds for clamping
+    const flatX = X.flat();
+    const flatY = Y.flat();
+    const xMin = Math.min(...flatX);
+    const xMax = Math.max(...flatX);
+    const yMin = Math.min(...flatY);
+    const yMax = Math.max(...flatY);
+
+    for (let i = 0; i < len; i++) {
+      const ep = epochs[i] ?? i;
+      if (ep > viewEpoch) continue;
+
+      const alpha = traj_1[i];
+      const beta = traj_2[i];
+      
+      const alphaClamped = Math.max(xMin, Math.min(xMax, alpha));
+      const betaClamped = Math.max(yMin, Math.min(yMax, beta));
+      
+      const loss = interpolateLoss(alphaClamped, betaClamped, X, Y, lossGrid);
+      
+      const x = norm.toX(alphaClamped);
+      const y = norm.toZ(loss) + 0.015; // Higher than line to avoid clipping
+      const z = norm.toY(betaClamped);
+      
+      if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
+        pts.push(new THREE.Vector3(x, y, z));
+      }
+    }
+    return pts;
+  }, [trajectoryHighlight, X, Y, lossGrid, norm, viewEpoch]);
+
+  if (points.length === 0) return null;
+
+  return (
+    <group>
+      {points.map((p, i) => (
+        <mesh key={i} position={p}>
+          {/* Octahedron looks like a 3D Diamond, aligning with the 2D view style */}
+          <octahedronGeometry args={[0.03, 0]} />
+          <meshStandardMaterial 
+            color="#00ffff" 
+            emissive="#00ffff" 
+            emissiveIntensity={0.8}
+            roughness={0.1}
+            metalness={0.9} 
+          />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 export default function LossLandscape3D({
   X,
   Y,
   lossGrid,
   baselineLoss,
   trajectory,
+  trajectoryHighlight,
   xLabel,
   planeLabel,
 }: LossLandscape3DProps) {
   const { t } = useI18n();
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+  const ui = useMemo(() => {
+    return isDark
+      ? {
+          panelBg: 'rgba(0,0,0,0.75)',
+          panelBorder: 'rgba(255,255,255,0.30)',
+          panelShadow: '0 12px 40px rgba(0,0,0,0.5)',
+          text: 'white',
+          surface: 'rgba(255,255,255,0.05)',
+          surfaceBorder: 'rgba(255,255,255,0.10)',
+          divider: 'rgba(255,255,255,0.20)',
+          tooltipBg: 'rgba(0,0,0,0.85)',
+          tooltipText: 'white',
+        }
+      : {
+          panelBg: 'rgba(255,255,255,0.86)',
+          panelBorder: 'rgba(15,23,42,0.12)',
+          panelShadow: '0 12px 40px rgba(15,23,42,0.12)',
+          text: '#0f172a',
+          surface: 'rgba(15,23,42,0.04)',
+          surfaceBorder: 'rgba(15,23,42,0.10)',
+          divider: 'rgba(15,23,42,0.12)',
+          tooltipBg: 'rgba(255,255,255,0.92)',
+          tooltipText: '#0f172a',
+        };
+  }, [isDark]);
   const [useLog, setUseLog] = useState(true);
   const [hoverInfo, setHoverInfo] = useState<{ alpha: number; beta: number; loss: number } | null>(null);
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null); // canvas-local coords
@@ -704,15 +813,15 @@ export default function LossLandscape3D({
           transform: `translate(${legendPos.x}px, ${legendPos.y}px)`,
           padding: '18px 20px',
           borderRadius: 18,
-          border: '1px solid rgba(255,255,255,0.3)',
-          background: 'rgba(0,0,0,0.75)',
+          border: `1px solid ${ui.panelBorder}`,
+          background: ui.panelBg,
           backdropFilter: 'blur(12px)',
-          color: 'white',
+          color: ui.text,
           zIndex: 10,
           fontSize: 13,
           lineHeight: 1.6,
           width: 300,
-          boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+          boxShadow: ui.panelShadow,
           cursor: isDraggingLegend.current ? 'grabbing' : 'grab',
         }}
         onMouseDown={startLegendDrag}
@@ -744,21 +853,23 @@ export default function LossLandscape3D({
                 width: 24,
                 height: 160,
                 borderRadius: 12,
-                border: '2px solid rgba(255,255,255,0.4)',
+                border: `2px solid ${isDark ? 'rgba(255,255,255,0.35)' : 'rgba(15,23,42,0.22)'}`,
                 background: `linear-gradient(to top, ${Array.from({ length: 12 }, (_, i) => {
                   const t = i / 11;
                   const c = getViridisColorNormalized(t);
                   const rgb = `rgb(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)})`;
                   return rgb;
                 }).join(',')})`,
-                boxShadow: '0 4px 12px rgba(0,0,0,0.3), inset 0 0 20px rgba(255,255,255,0.1)',
+                boxShadow: isDark
+                  ? '0 4px 12px rgba(0,0,0,0.3), inset 0 0 20px rgba(255,255,255,0.1)'
+                  : '0 4px 12px rgba(15,23,42,0.10), inset 0 0 20px rgba(255,255,255,0.25)',
                 cursor: 'help',
                 position: 'relative',
               }}
             />
             <div style={{ 
               fontSize: 9, 
-              opacity: 0.6, 
+              opacity: isDark ? 0.6 : 0.75, 
               marginTop: 4,
               textAlign: 'center',
               lineHeight: 1.2,
@@ -771,8 +882,8 @@ export default function LossLandscape3D({
             <div style={{ 
               padding: '8px 10px',
               borderRadius: 8,
-              background: 'rgba(255,100,100,0.15)',
-              border: '1px solid rgba(255,100,100,0.3)',
+              background: isDark ? 'rgba(255,100,100,0.15)' : 'rgba(239,68,68,0.10)',
+              border: isDark ? '1px solid rgba(255,100,100,0.3)' : '1px solid rgba(239,68,68,0.22)',
             }}>
               <div style={{ fontSize: 10, opacity: 0.9, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>High Loss</div>
               <div style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#ff6b6b' }}>{fmtLoss(norm.stats.zMax)}</div>
@@ -782,7 +893,7 @@ export default function LossLandscape3D({
               textAlign: 'center',
               padding: '6px 0',
               fontSize: 10,
-              opacity: 0.7,
+              opacity: isDark ? 0.7 : 0.8,
               fontStyle: 'italic',
             }}>
               ↓ Lower is better ↓
@@ -791,8 +902,8 @@ export default function LossLandscape3D({
             <div style={{ 
               padding: '8px 10px',
               borderRadius: 8,
-              background: 'rgba(100,255,150,0.15)',
-              border: '1px solid rgba(100,255,150,0.3)',
+              background: isDark ? 'rgba(100,255,150,0.15)' : 'rgba(16,185,129,0.10)',
+              border: isDark ? '1px solid rgba(100,255,150,0.3)' : '1px solid rgba(16,185,129,0.22)',
             }}>
               <div style={{ fontSize: 10, opacity: 0.9, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Low Loss</div>
               <div style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#51cf66' }}>{fmtLoss(norm.stats.zMin)}</div>
@@ -801,7 +912,7 @@ export default function LossLandscape3D({
         </div>
 
         <div style={{ 
-          borderTop: '2px solid rgba(255,255,255,0.2)', 
+          borderTop: `2px solid ${ui.divider}`, 
           paddingTop: 14, 
           marginTop: 14, 
           display: 'grid', 
@@ -815,7 +926,7 @@ export default function LossLandscape3D({
               fontSize: 12,
               padding: '8px 10px',
               borderRadius: 8,
-              background: 'rgba(255,255,255,0.05)',
+              background: ui.surface,
             }}>
               <span style={{ opacity: 0.9, fontWeight: 600 }}>📍 Baseline Loss</span>
               <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#fbbf24' }}>{fmtLoss(baselineLoss)}</span>
@@ -830,8 +941,8 @@ export default function LossLandscape3D({
               fontSize: 12,
               padding: '8px 10px',
               borderRadius: 8,
-              background: 'rgba(255, 80, 80, 0.1)',
-              border: '1px solid rgba(255, 80, 80, 0.3)',
+              background: isDark ? 'rgba(255, 80, 80, 0.1)' : 'rgba(239, 68, 68, 0.08)',
+              border: isDark ? '1px solid rgba(255, 80, 80, 0.3)' : '1px solid rgba(239, 68, 68, 0.18)',
             }}>
               <div style={{ 
                 width: 24, 
@@ -851,16 +962,26 @@ export default function LossLandscape3D({
             fontSize: 12,
             padding: '8px 10px',
             borderRadius: 8,
-            background: 'rgba(255,255,255,0.05)',
+            background: ui.surface,
           }}>
             <span style={{ opacity: 0.9, fontWeight: 600 }}>Scale</span>
             <button
               type="button"
               onClick={() => setUseLog((v) => !v)}
               style={{
-                border: `2px solid ${useLog ? 'rgba(251, 191, 36, 0.5)' : 'rgba(255,255,255,0.3)'}`,
-                background: useLog ? 'rgba(251, 191, 36, 0.2)' : 'rgba(255,255,255,0.1)',
-                color: 'white',
+                border: `2px solid ${
+                  useLog
+                    ? 'rgba(251, 191, 36, 0.55)'
+                    : isDark
+                      ? 'rgba(255,255,255,0.30)'
+                      : 'rgba(15,23,42,0.18)'
+                }`,
+                background: useLog
+                  ? 'rgba(251, 191, 36, 0.20)'
+                  : isDark
+                    ? 'rgba(255,255,255,0.08)'
+                    : 'rgba(15,23,42,0.05)',
+                color: ui.text,
                 borderRadius: 8,
                 padding: '6px 14px',
                 cursor: 'pointer',
@@ -870,8 +991,20 @@ export default function LossLandscape3D({
                 textTransform: 'uppercase',
                 letterSpacing: '0.5px',
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = useLog ? 'rgba(251, 191, 36, 0.3)' : 'rgba(255,255,255,0.15)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = useLog ? 'rgba(251, 191, 36, 0.2)' : 'rgba(255,255,255,0.1)'}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = useLog
+                  ? 'rgba(251, 191, 36, 0.28)'
+                  : isDark
+                    ? 'rgba(255,255,255,0.12)'
+                    : 'rgba(15,23,42,0.07)')
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = useLog
+                  ? 'rgba(251, 191, 36, 0.20)'
+                  : isDark
+                    ? 'rgba(255,255,255,0.08)'
+                    : 'rgba(15,23,42,0.05)')
+              }
             >
               {useLog ? '📊 Log' : '📈 Linear'}
             </button>
@@ -920,9 +1053,9 @@ export default function LossLandscape3D({
         <div style={{
           marginTop: 12,
           paddingTop: 12,
-          borderTop: '1px solid rgba(255,255,255,0.1)',
+          borderTop: `1px solid ${ui.surfaceBorder}`,
           fontSize: 10,
-          opacity: 0.6,
+          opacity: isDark ? 0.6 : 0.75,
           lineHeight: 1.4,
         }}>
           💡 <strong>Tip:</strong> Drag to rotate, scroll to zoom, hover to see values
@@ -939,6 +1072,7 @@ export default function LossLandscape3D({
           setHoverInfo(null);
         }}
       >
+        <color attach="background" args={[isDark ? '#0b1220' : '#f1f5f9']} />
         {/* Camera positioned to show Y-axis (loss) pointing up */}
         <PerspectiveCamera makeDefault position={[2.5, 2.5, 2.5]} />
         <ambientLight intensity={0.6} />
@@ -952,6 +1086,16 @@ export default function LossLandscape3D({
         />
         {filteredTrajectory && (
           <TrajectoryLine trajectory={filteredTrajectory} X={X} Y={Y} lossGrid={lossGrid} norm={norm} />
+        )}
+        {trajectoryHighlight && (
+          <TrajectoryHighlight 
+            trajectoryHighlight={trajectoryHighlight} 
+            X={X} 
+            Y={Y} 
+            lossGrid={lossGrid} 
+            norm={norm} 
+            viewEpoch={viewEpoch}
+          />
         )}
 
         {/* Data-aware ground grid (normalized) - XZ plane (ground) */}
@@ -971,13 +1115,37 @@ export default function LossLandscape3D({
         <Line points={[[0, 0, 0], [1.25, 0, 0]]} color="#93c5fd" lineWidth={1} />
         <Line points={[[0, 0, 0], [0, 1.25, 0]]} color="#fca5a5" lineWidth={1} />
         <Line points={[[0, 0, 0], [0, 0, 1.25]]} color="#a7f3d0" lineWidth={1} />
-        <Html position={[1.32, 0, 0]} style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, fontWeight: 600, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
+        <Html
+          position={[1.32, 0, 0]}
+          style={{
+            color: isDark ? 'rgba(255,255,255,0.9)' : 'rgba(15,23,42,0.9)',
+            fontSize: 13,
+            fontWeight: 600,
+            textShadow: isDark ? '0 1px 3px rgba(0,0,0,0.5)' : '0 1px 2px rgba(15,23,42,0.15)',
+          }}
+        >
           {xLabelText}
         </Html>
-        <Html position={[0, 1.32, 0]} style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, fontWeight: 600, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
+        <Html
+          position={[0, 1.32, 0]}
+          style={{
+            color: isDark ? 'rgba(255,255,255,0.9)' : 'rgba(15,23,42,0.9)',
+            fontSize: 13,
+            fontWeight: 600,
+            textShadow: isDark ? '0 1px 3px rgba(0,0,0,0.5)' : '0 1px 2px rgba(15,23,42,0.15)',
+          }}
+        >
           {zLabel} ↑
         </Html>
-        <Html position={[0, 0, 1.32]} style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, fontWeight: 600, textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
+        <Html
+          position={[0, 0, 1.32]}
+          style={{
+            color: isDark ? 'rgba(255,255,255,0.9)' : 'rgba(15,23,42,0.9)',
+            fontSize: 13,
+            fontWeight: 600,
+            textShadow: isDark ? '0 1px 3px rgba(0,0,0,0.5)' : '0 1px 2px rgba(15,23,42,0.15)',
+          }}
+        >
           {planeLabelText}
         </Html>
 
@@ -994,14 +1162,16 @@ export default function LossLandscape3D({
             padding: '14px 16px',
             borderRadius: 14,
             border: '2px solid rgba(251, 191, 36, 0.5)',
-            background: 'rgba(0,0,0,0.85)',
+            background: ui.tooltipBg,
             backdropFilter: 'blur(12px)',
-            color: 'white',
+            color: ui.tooltipText,
             fontSize: 12,
             lineHeight: 1.7,
             minWidth: 200,
             pointerEvents: 'none',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.5), 0 0 20px rgba(251, 191, 36, 0.2)',
+            boxShadow: isDark
+              ? '0 8px 24px rgba(0,0,0,0.5), 0 0 20px rgba(251, 191, 36, 0.2)'
+              : '0 8px 24px rgba(15,23,42,0.12), 0 0 18px rgba(251, 191, 36, 0.18)',
             zIndex: 1000,
           }}
         >
@@ -1021,7 +1191,7 @@ export default function LossLandscape3D({
               display: 'flex', 
               justifyContent: 'space-between',
               padding: '4px 0',
-              borderBottom: '1px solid rgba(255,255,255,0.1)',
+              borderBottom: `1px solid ${ui.surfaceBorder}`,
             }}>
               <span style={{ opacity: 0.8, fontWeight: 600 }}>{xLabelText}:</span> 
               <span style={{ fontWeight: 700, color: '#93c5fd' }}>{hoverInfo.alpha.toFixed(4)}</span>
@@ -1030,7 +1200,7 @@ export default function LossLandscape3D({
               display: 'flex', 
               justifyContent: 'space-between',
               padding: '4px 0',
-              borderBottom: '1px solid rgba(255,255,255,0.1)',
+              borderBottom: `1px solid ${ui.surfaceBorder}`,
             }}>
               <span style={{ opacity: 0.8, fontWeight: 600 }}>{planeLabelText}:</span> 
               <span style={{ fontWeight: 700, color: '#a7f3d0' }}>{hoverInfo.beta.toFixed(4)}</span>

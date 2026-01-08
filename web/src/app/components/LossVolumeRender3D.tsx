@@ -5,6 +5,7 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import { useI18n } from '../i18n';
+import { useTheme } from '../theme';
 import { getViridisColor } from '../lib/colormap';
 
 function fmtLoss(x: number) {
@@ -34,6 +35,49 @@ function finiteMinMax3D(grid: number[][][]) {
   }
   if (minV === maxV) return { minV, maxV: minV + 1e-12 };
   return { minV, maxV };
+}
+
+function robustMinMax3D(
+  grid: number[][][],
+  qLow: number = 0.02,
+  qHigh: number = 0.98,
+  maxSamples: number = 50_000
+) {
+  const nx = grid.length;
+  const ny = grid[0]?.length || 0;
+  const nz = grid[0]?.[0]?.length || 0;
+  if (nx * ny * nz <= 0) return finiteMinMax3D(grid);
+
+  const total = nx * ny * nz;
+  // sqrt-ish stride gives decent coverage while keeping sample size bounded.
+  const stride = Math.max(1, Math.floor(Math.sqrt(total / maxSamples)));
+
+  const vals: number[] = [];
+  for (let i = 0; i < nx; i += stride) {
+    const plane = grid[i];
+    if (!plane) continue;
+    for (let j = 0; j < ny; j += stride) {
+      const row = plane[j];
+      if (!row) continue;
+      for (let k = 0; k < nz; k += stride) {
+        const v = row[k];
+        if (!Number.isFinite(v)) continue;
+        vals.push(v);
+        if (vals.length >= maxSamples) break;
+      }
+      if (vals.length >= maxSamples) break;
+    }
+    if (vals.length >= maxSamples) break;
+  }
+
+  if (vals.length < 20) return finiteMinMax3D(grid);
+  vals.sort((a, b) => a - b);
+
+  const lo = Math.max(0, Math.min(vals.length - 1, Math.floor(qLow * (vals.length - 1))));
+  const hi = Math.max(0, Math.min(vals.length - 1, Math.floor(qHigh * (vals.length - 1))));
+  const minV = vals[lo];
+  const maxV = vals[Math.max(hi, lo + 1)];
+  return minV === maxV ? { minV, maxV: minV + 1e-12 } : { minV, maxV };
 }
 
 function minMaxFlat2D(grid: number[][]) {
@@ -85,16 +129,42 @@ function normalizeZAxis(Z: any, lossGrid3d: number[][][], X: number[][], Y: numb
   return Array.from({ length: nz }, (_, i) => -extent + (i / Math.max(1, nz - 1)) * (2 * extent));
 }
 
-function sliceToTexture(slice: number[][], minV: number, maxV: number, threshold: number = 0) {
+function sliceToTexture(
+  slice: number[][],
+  minV: number,
+  maxV: number,
+  threshold: number = 0,
+  opts?: { scale?: 'linear' | 'log'; alphaGamma?: number; alphaFloor?: number }
+) {
   const h = slice.length;
   const w = slice[0]?.length || 0;
   const data = new Uint8Array(w * h * 4);
   const range = maxV - minV || 1;
   const thresholdNorm = (threshold - minV) / range;
 
+  const scale = opts?.scale ?? 'log';
+  const alphaGamma = opts?.alphaGamma ?? 0.5;
+  const alphaFloor = opts?.alphaFloor ?? 0.02;
+  const zEps = 1e-12;
+
+  const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
+  const normalize = (raw: number) => {
+    const lin = clamp01((raw - minV) / range);
+    if (scale === 'linear') return lin;
+    // Match other views: log10(max(z,0)+eps)
+    const safeRaw = Math.max(0, raw);
+    const safeMin = Math.max(0, minV);
+    const safeMax = Math.max(0, maxV);
+    const lo = Math.log10(safeMin + zEps);
+    const hi = Math.log10(safeMax + zEps);
+    const denom = hi - lo || 1;
+    const v = (Math.log10(safeRaw + zEps) - lo) / denom;
+    return clamp01(v);
+  };
+
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      const v = (slice[y][x] - minV) / range;
+      const v = normalize(slice[y][x]);
       const idx = (y * w + x) * 4;
       
       // Use viridis colormap
@@ -104,11 +174,10 @@ function sliceToTexture(slice: number[][], minV: number, maxV: number, threshold
       data[idx + 2] = color.b;
       
       // Alpha: higher loss = more opaque, with threshold filtering
-      // Use a power curve to emphasize high-loss regions
-      const alphaValue = v > thresholdNorm 
-        ? Math.pow((v - thresholdNorm) / (1 - thresholdNorm), 0.5)
-        : 0;
-      data[idx + 3] = Math.round(255 * Math.min(1, Math.max(0, alphaValue)));
+      // Use a tunable curve + small floor so low values don't disappear.
+      const t = v > thresholdNorm ? clamp01((v - thresholdNorm) / (1 - thresholdNorm || 1)) : 0;
+      const alphaValue = t > 0 ? alphaFloor + (1 - alphaFloor) * Math.pow(t, alphaGamma) : 0;
+      data[idx + 3] = Math.round(255 * clamp01(alphaValue));
     }
   }
 
@@ -526,14 +595,45 @@ export default function LossVolumeRender3D({
   trajectory?: { traj_1: number[]; traj_2: number[]; traj_3?: number[]; epochs: number[] };
 }) {
   const { t } = useI18n();
-  const [opacity, setOpacity] = useState(0.15);
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+  const [opacity, setOpacity] = useState(0.22);
   const [step, setStep] = useState(2);
   const [threshold, setThreshold] = useState(0.0);
   const [useLog, setUseLog] = useState(true);
+  // Transfer function controls (helps visibility in dark mode)
+  const [colorScale, setColorScale] = useState<'linear' | 'log'>('log');
+  const [alphaGamma, setAlphaGamma] = useState(0.5);
+  const [alphaFloor, setAlphaFloor] = useState(0.02);
   const [legendPos, setLegendPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const isDraggingLegend = useRef(false);
   const dragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const posStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const ui = useMemo(() => {
+    // Keep overlays readable in both themes (match overall app aesthetic)
+    return isDark
+      ? {
+          panelBg: 'rgba(0,0,0,0.72)',
+          panelBorder: 'rgba(255,255,255,0.22)',
+          panelShadow: '0 12px 40px rgba(0,0,0,0.5)',
+          text: 'rgba(255,255,255,0.95)',
+          textMuted: 'rgba(255,255,255,0.75)',
+          surface: 'rgba(255,255,255,0.06)',
+          surfaceBorder: 'rgba(255,255,255,0.12)',
+          divider: 'rgba(255,255,255,0.16)',
+        }
+      : {
+          panelBg: 'rgba(255,255,255,0.86)',
+          panelBorder: 'rgba(15,23,42,0.12)',
+          panelShadow: '0 12px 40px rgba(15,23,42,0.12)',
+          text: '#0f172a',
+          textMuted: 'rgba(15,23,42,0.75)',
+          surface: 'rgba(15,23,42,0.04)',
+          surfaceBorder: 'rgba(15,23,42,0.10)',
+          divider: 'rgba(15,23,42,0.12)',
+        };
+  }, [isDark]);
 
   // Compute epoch range
   const { minEpoch, maxEpoch } = useMemo(() => {
@@ -568,11 +668,13 @@ export default function LossVolumeRender3D({
 
   const norm = useMemo(() => buildNormalizer3D(X, Y, ZArray, lossGrid2d, useLog), [X, Y, ZArray, lossGrid2d, useLog]);
 
-  const { minV, maxV, planes } = useMemo(() => {
+  const { minV, maxV, planes, dataMinV, dataMaxV } = useMemo(() => {
     const nx = lossGrid3d.length;
     const ny = lossGrid3d[0]?.length || 0;
     const nz = lossGrid3d[0]?.[0]?.length || 0;
-    const { minV, maxV } = finiteMinMax3D(lossGrid3d);
+    const { minV: dataMinV, maxV: dataMaxV } = finiteMinMax3D(lossGrid3d);
+    // Clip outliers so mid/low regions become visible (huge win on dark backgrounds).
+    const { minV, maxV } = robustMinMax3D(lossGrid3d, 0.02, 0.98);
     const thresholdValue = minV + threshold * (maxV - minV);
 
     // Build textures for k slices and place planes at the true γ coordinate (stacked along Y)
@@ -586,13 +688,17 @@ export default function LossVolumeRender3D({
       const slice: number[][] = Array.from({ length: ny }, (_, j) =>
         Array.from({ length: nx }, (_, i) => lossGrid3d[i][j][k] ?? 0)
       );
-      const tex = sliceToTexture(slice, minV, maxV, thresholdValue);
+      const tex = sliceToTexture(slice, minV, maxV, thresholdValue, {
+        scale: colorScale,
+        alphaGamma,
+        alphaFloor,
+      });
       const gamma = ZArray[k] ?? 0;
       const y = norm.toZ3D(gamma);
       planes.push({ y, tex });
     }
-    return { minV, maxV, planes };
-  }, [lossGrid3d, step, threshold, ZArray, norm]);
+    return { minV, maxV, planes, dataMinV, dataMaxV };
+  }, [lossGrid3d, step, threshold, ZArray, norm, colorScale, alphaGamma, alphaFloor]);
 
   // Legend drag handlers to avoid blocking top-right
   useEffect(() => {
@@ -623,6 +729,7 @@ export default function LossVolumeRender3D({
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <Canvas>
+        <color attach="background" args={[isDark ? '#1a1a1a' : '#f1f5f9']} />
         <PerspectiveCamera makeDefault position={[2.0, 2.0, 1.6]} />
         <ambientLight intensity={0.6} />
         <directionalLight position={[10, 10, 5]} intensity={1} />
@@ -638,7 +745,8 @@ export default function LossVolumeRender3D({
               transparent
               opacity={opacity}
               depthWrite={false}
-              blending={THREE.NormalBlending}
+              // Additive blending makes faint low values accumulate instead of disappearing in dark mode.
+              blending={isDark ? THREE.AdditiveBlending : THREE.NormalBlending}
               side={THREE.DoubleSide}
             />
           </mesh>
@@ -667,15 +775,15 @@ export default function LossVolumeRender3D({
           transform: `translate(${legendPos.x}px, ${legendPos.y}px)`,
           padding: '18px 20px',
           borderRadius: 18,
-          border: '1px solid rgba(255,255,255,0.3)',
-          background: 'rgba(0,0,0,0.75)',
+          border: `1px solid ${ui.panelBorder}`,
+          background: ui.panelBg,
           backdropFilter: 'blur(12px)',
-          color: 'white',
+          color: ui.text,
           zIndex: 10,
           fontSize: 13,
           lineHeight: 1.6,
           width: 300,
-          boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+          boxShadow: ui.panelShadow,
           cursor: isDraggingLegend.current ? 'grabbing' : 'grab',
         }}
         onMouseDown={startLegendDrag}
@@ -707,21 +815,23 @@ export default function LossVolumeRender3D({
                 width: 24,
                 height: 160,
                 borderRadius: 12,
-                border: '2px solid rgba(255,255,255,0.4)',
+                border: `2px solid ${isDark ? 'rgba(255,255,255,0.35)' : 'rgba(15,23,42,0.22)'}`,
                 background: `linear-gradient(to top, ${Array.from({ length: 12 }, (_, i) => {
                   const t = i / 11;
                   const c = getViridisColor(t);
                   const rgb = `rgb(${c.r},${c.g},${c.b})`;
                   return rgb;
                 }).join(',')})`,
-                boxShadow: '0 4px 12px rgba(0,0,0,0.3), inset 0 0 20px rgba(255,255,255,0.1)',
+                boxShadow: isDark
+                  ? '0 4px 12px rgba(0,0,0,0.3), inset 0 0 20px rgba(255,255,255,0.08)'
+                  : '0 4px 12px rgba(15,23,42,0.10), inset 0 0 20px rgba(255,255,255,0.25)',
                 cursor: 'help',
                 position: 'relative',
               }}
             />
             <div style={{ 
               fontSize: 9, 
-              opacity: 0.6, 
+              opacity: isDark ? 0.6 : 0.75,
               marginTop: 4,
               textAlign: 'center',
               lineHeight: 1.2,
@@ -734,8 +844,8 @@ export default function LossVolumeRender3D({
             <div style={{ 
               padding: '8px 10px',
               borderRadius: 8,
-              background: 'rgba(255,100,100,0.15)',
-              border: '1px solid rgba(255,100,100,0.3)',
+              background: isDark ? 'rgba(255,100,100,0.15)' : 'rgba(239,68,68,0.10)',
+              border: isDark ? '1px solid rgba(255,100,100,0.3)' : '1px solid rgba(239,68,68,0.22)',
             }}>
               <div style={{ fontSize: 10, opacity: 0.9, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>High Loss</div>
               <div style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#ff6b6b' }}>{fmtLoss(maxV)}</div>
@@ -745,7 +855,7 @@ export default function LossVolumeRender3D({
               textAlign: 'center',
               padding: '6px 0',
               fontSize: 10,
-              opacity: 0.7,
+              opacity: isDark ? 0.7 : 0.8,
               fontStyle: 'italic',
             }}>
               ↓ Lower is better ↓
@@ -754,8 +864,8 @@ export default function LossVolumeRender3D({
             <div style={{ 
               padding: '8px 10px',
               borderRadius: 8,
-              background: 'rgba(100,255,150,0.15)',
-              border: '1px solid rgba(100,255,150,0.3)',
+              background: isDark ? 'rgba(100,255,150,0.15)' : 'rgba(16,185,129,0.10)',
+              border: isDark ? '1px solid rgba(100,255,150,0.3)' : '1px solid rgba(16,185,129,0.22)',
             }}>
               <div style={{ fontSize: 10, opacity: 0.9, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Low Loss</div>
               <div style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#51cf66' }}>{fmtLoss(minV)}</div>
@@ -764,7 +874,7 @@ export default function LossVolumeRender3D({
         </div>
 
         <div style={{ 
-          borderTop: '2px solid rgba(255,255,255,0.2)', 
+          borderTop: `2px solid ${ui.divider}`, 
           paddingTop: 14, 
           marginTop: 14, 
           display: 'grid', 
@@ -778,12 +888,84 @@ export default function LossVolumeRender3D({
               fontSize: 12,
               padding: '8px 10px',
               borderRadius: 8,
-              background: 'rgba(255,255,255,0.05)',
+              background: ui.surface,
             }}>
               <span style={{ opacity: 0.9, fontWeight: 600 }}>📍 Baseline Loss</span>
               <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#fbbf24' }}>{fmtLoss(baselineLoss)}</span>
             </div>
           )}
+
+          <div style={{ fontSize: 10, opacity: 0.7, lineHeight: 1.35 }}>
+            <div>
+              Color range (p2–p98): <span style={{ fontFamily: 'monospace' }}>{fmtLoss(minV)} → {fmtLoss(maxV)}</span>
+            </div>
+            <div>
+              Data min/max: <span style={{ fontFamily: 'monospace' }}>{fmtLoss(dataMinV)} → {fmtLoss(dataMaxV)}</span>
+            </div>
+          </div>
+
+          {/* Match other views: Scale toggle lives in the legend */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              fontSize: 12,
+              padding: '8px 10px',
+              borderRadius: 8,
+              background: ui.surface,
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <span style={{ opacity: 0.9, fontWeight: 600 }}>Scale</span>
+            <button
+              type="button"
+              onClick={() => setColorScale((s) => (s === 'log' ? 'linear' : 'log'))}
+              style={{
+                border: `2px solid ${
+                  colorScale === 'log'
+                    ? 'rgba(251, 191, 36, 0.55)'
+                    : isDark
+                      ? 'rgba(255,255,255,0.30)'
+                      : 'rgba(15,23,42,0.18)'
+                }`,
+                background:
+                  colorScale === 'log'
+                    ? 'rgba(251, 191, 36, 0.20)'
+                    : isDark
+                      ? 'rgba(255,255,255,0.08)'
+                      : 'rgba(15,23,42,0.05)',
+                color: ui.text,
+                borderRadius: 8,
+                padding: '6px 14px',
+                cursor: 'pointer',
+                fontWeight: 700,
+                fontSize: 11,
+                transition: 'all 0.2s ease',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background =
+                  colorScale === 'log'
+                    ? 'rgba(251, 191, 36, 0.28)'
+                    : isDark
+                      ? 'rgba(255,255,255,0.12)'
+                      : 'rgba(15,23,42,0.07)')
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background =
+                  colorScale === 'log'
+                    ? 'rgba(251, 191, 36, 0.20)'
+                    : isDark
+                      ? 'rgba(255,255,255,0.08)'
+                      : 'rgba(15,23,42,0.05)')
+              }
+            >
+              {colorScale === 'log' ? '📊 Log' : '📈 Linear'}
+            </button>
+          </div>
           
           {trajectory && (
             <div style={{ 
@@ -793,8 +975,8 @@ export default function LossVolumeRender3D({
               fontSize: 12,
               padding: '8px 10px',
               borderRadius: 8,
-              background: 'rgba(255, 80, 80, 0.1)',
-              border: '1px solid rgba(255, 80, 80, 0.3)',
+              background: isDark ? 'rgba(255, 80, 80, 0.1)' : 'rgba(239, 68, 68, 0.08)',
+              border: isDark ? '1px solid rgba(255, 80, 80, 0.3)' : '1px solid rgba(239, 68, 68, 0.18)',
             }}>
               <div style={{ 
                 width: 24, 
@@ -816,7 +998,7 @@ export default function LossVolumeRender3D({
                 fontSize: 12,
                 padding: '8px 10px',
                 borderRadius: 8,
-                background: 'rgba(255,255,255,0.05)',
+                background: ui.surface,
               }}
               onMouseDown={(e) => e.stopPropagation()}
             >
@@ -849,9 +1031,9 @@ export default function LossVolumeRender3D({
         <div style={{
           marginTop: 12,
           paddingTop: 12,
-          borderTop: '1px solid rgba(255,255,255,0.1)',
+          borderTop: `1px solid ${ui.surfaceBorder}`,
           fontSize: 10,
-          opacity: 0.6,
+          opacity: isDark ? 0.6 : 0.75,
           lineHeight: 1.4,
         }}>
           💡 <strong>Tip:</strong> Drag to rotate, scroll to zoom, adjust opacity/threshold below
@@ -869,21 +1051,21 @@ export default function LossVolumeRender3D({
           gap: 10,
           padding: '14px 16px',
           borderRadius: 16,
-          border: '1px solid rgba(255,255,255,0.25)',
-          background: 'rgba(0,0,0,0.7)',
+          border: `1px solid ${ui.panelBorder}`,
+          background: ui.panelBg,
           backdropFilter: 'blur(10px)',
-          color: 'rgba(255,255,255,0.95)',
+          color: ui.text,
           fontSize: 13,
-          boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+          boxShadow: isDark ? '0 8px 32px rgba(0,0,0,0.4)' : '0 8px 32px rgba(15,23,42,0.12)',
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 4 }}>
           <div style={{ fontWeight: 800, fontSize: 14 }}>{t.viewVolume}</div>
-          <div style={{ opacity: 0.85, fontSize: 11, fontFamily: 'monospace' }}>
+          <div style={{ opacity: isDark ? 0.85 : 0.8, fontSize: 11, fontFamily: 'monospace' }}>
             {planes.length} slices
           </div>
         </div>
-        <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 8, lineHeight: 1.4 }}>
+        <div style={{ fontSize: 11, opacity: isDark ? 0.75 : 0.78, marginBottom: 8, lineHeight: 1.4 }}>
           Volume rendering: all slices blended together. Brighter = higher loss. Rotate to see 3D structure.
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 70px', gap: 12, alignItems: 'center' }}>
@@ -924,6 +1106,34 @@ export default function LossVolumeRender3D({
             style={{ accentColor: '#fbbf24' }}
           />
           <div style={{ textAlign: 'right', opacity: 0.9, fontFamily: 'monospace', fontSize: 12 }}>{threshold.toFixed(2)}</div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 70px', gap: 12, alignItems: 'center' }}>
+          <div style={{ fontWeight: 700, fontSize: 12 }}>Alpha curve</div>
+          <input
+            type="range"
+            min={0.2}
+            max={1.2}
+            step={0.01}
+            value={alphaGamma}
+            onChange={(e) => setAlphaGamma(parseFloat(e.target.value))}
+            style={{ accentColor: '#fbbf24' }}
+          />
+          <div style={{ textAlign: 'right', opacity: 0.9, fontFamily: 'monospace', fontSize: 12 }}>{alphaGamma.toFixed(2)}</div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 70px', gap: 12, alignItems: 'center' }}>
+          <div style={{ fontWeight: 700, fontSize: 12 }}>Alpha floor</div>
+          <input
+            type="range"
+            min={0}
+            max={0.12}
+            step={0.005}
+            value={alphaFloor}
+            onChange={(e) => setAlphaFloor(parseFloat(e.target.value))}
+            style={{ accentColor: '#fbbf24' }}
+          />
+          <div style={{ textAlign: 'right', opacity: 0.9, fontFamily: 'monospace', fontSize: 12 }}>{alphaFloor.toFixed(3)}</div>
         </div>
 
         <div style={{ fontSize: 10, opacity: 0.6, marginTop: 4 }}>
