@@ -551,11 +551,14 @@ export default function LossLandscape2D({
         ctx.restore();
       }
 
-      // Axes labels (α, β) with background
+      // Axes labels with background (defaults α/β, but slice views may pass β/γ or α/γ)
       ctx.save();
       
-      // α axis label
-      const alphaText = `α: ${stats.xMin.toFixed(2)} → ${stats.xMax.toFixed(2)}`;
+      const xLabelText = xLabel ?? 'α';
+      const planeLabelText = planeLabel ?? 'β';
+
+      // X axis label
+      const alphaText = `${xLabelText}: ${stats.xMin.toFixed(2)} → ${stats.xMax.toFixed(2)}`;
       ctx.font = 'bold 12px ui-sans-serif, system-ui';
       const alphaWidth = ctx.measureText(alphaText).width;
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -563,8 +566,8 @@ export default function LossLandscape2D({
       ctx.fillStyle = 'white';
       ctx.fillText(alphaText, 20, 22);
       
-      // β axis label
-      const betaText = `β: ${stats.yMin.toFixed(2)} → ${stats.yMax.toFixed(2)}`;
+      // Plane axis label
+      const betaText = `${planeLabelText}: ${stats.yMin.toFixed(2)} → ${stats.yMax.toFixed(2)}`;
       const betaWidth = ctx.measureText(betaText).width;
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillRect(14, 34, betaWidth + 12, 20);
@@ -578,7 +581,7 @@ export default function LossLandscape2D({
     ro.observe(wrap);
     render();
     return () => ro.disconnect();
-  }, [lossGrid, stats, filteredTrajectory, useLog]);
+  }, [lossGrid, stats, filteredTrajectory, useLog, trajectoryHighlight, sliceGamma, sliceThreshold, xLabel, planeLabel]);
 
   useEffect(() => {
     const canvas = canvasRef.current;

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import Header from './components/Header';
 import { I18nProvider } from './i18n';
+import { ThemeProvider } from './theme';
 
 export const metadata: Metadata = {
   title: 'LearnableKGE - Loss Landscape Visualization',
@@ -31,12 +32,14 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <I18nProvider>
-          <div className="appShell">
-            <Header />
-            {children}
-          </div>
-        </I18nProvider>
+        <ThemeProvider>
+          <I18nProvider>
+            <div className="appShell">
+              <Header />
+              {children}
+            </div>
+          </I18nProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

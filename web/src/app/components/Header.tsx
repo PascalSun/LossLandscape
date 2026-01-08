@@ -1,10 +1,12 @@
 'use client';
 
 import { useI18n } from '../i18n';
+import { useTheme } from '../theme';
 import Image from 'next/image';
 
 export default function Header() {
   const { locale, setLocale, t } = useI18n();
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <header className="appHeader">
@@ -13,8 +15,8 @@ export default function Header() {
           <Image
             src="/assets/logo/android-chrome-192x192.png"
             alt="LearnableKGE Logo"
-            width={40}
-            height={40}
+            width={48}
+            height={48}
             priority
             unoptimized
           />
@@ -25,21 +27,32 @@ export default function Header() {
         </div>
       </div>
 
-      <div className="langToggle">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <button
           type="button"
-          className={locale === 'zh' ? 'active' : ''}
-          onClick={() => setLocale('zh')}
+          onClick={toggleTheme}
+          className="themeToggle"
+          title={theme === 'light' ? '切换到深色模式' : 'Switch to dark mode'}
+          aria-label={theme === 'light' ? '切换到深色模式' : 'Switch to dark mode'}
         >
-          中文
+          {theme === 'light' ? '🌙' : '☀️'}
         </button>
-        <button
-          type="button"
-          className={locale === 'en' ? 'active' : ''}
-          onClick={() => setLocale('en')}
-        >
-          English
-        </button>
+        <div className="langToggle">
+          <button
+            type="button"
+            className={locale === 'zh' ? 'active' : ''}
+            onClick={() => setLocale('zh')}
+          >
+            中文
+          </button>
+          <button
+            type="button"
+            className={locale === 'en' ? 'active' : ''}
+            onClick={() => setLocale('en')}
+          >
+            English
+          </button>
+        </div>
       </div>
     </header>
   );

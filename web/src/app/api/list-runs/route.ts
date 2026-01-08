@@ -45,14 +45,31 @@ export async function GET() {
     const outputsDir = join(repoRoot, 'outputs');
     let runs: string[] = [];
     if (existsSync(outputsDir)) {
+      const hasLandscapeFiles = (dir: string): boolean => {
+        try {
+          const entries = readdirSync(dir);
+          for (const entry of entries) {
+            // Skip metadata files
+            if (entry.includes('.export.meta.') || entry.includes('.meta.')) continue;
+            if (entry.endsWith('.json') || entry.endsWith('.landscape') || entry.endsWith('.npz')) {
+              return true;
+            }
+          }
+        } catch {
+          // ignore
+        }
+        return false;
+      };
+
       const scanOutputs = (dir: string, prefix = 'outputs'): void => {
         const entries = readdirSync(dir);
         for (const entry of entries) {
           const fullPath = join(dir, entry);
           const stat = statSync(fullPath);
           if (stat.isDirectory()) {
-            // Look for run_* directories
-            if (entry.startsWith('run_') && prefix === 'outputs') {
+            // Prefer listing directories that actually contain landscape files.
+            // This supports nested layouts like outputs/run_xxx/foo/complete_example.json.
+            if (hasLandscapeFiles(fullPath)) {
               runs.push(`${prefix}/${entry}`);
             }
             // Recursively scan subdirectories
@@ -63,7 +80,7 @@ export async function GET() {
       scanOutputs(outputsDir);
       
       // Sort runs by name (most recent first if using timestamp format)
-      runs.sort().reverse();
+      runs = Array.from(new Set(runs)).sort().reverse();
     }
 
     return NextResponse.json({ configs, runs });

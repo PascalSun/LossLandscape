@@ -119,6 +119,11 @@ class Explorer:
         # 轨迹记录
         self._trajectory_weights = []
         self._trajectory_epochs = []
+        # Optional per-point scalar losses (e.g., true train loss per epoch).
+        # If provided, they will be exported alongside trajectory coordinates.
+        self._trajectory_losses = []
+        # Optional validation losses per epoch
+        self._trajectory_val_losses = []
         self._trajectory_mode = 'fixed'  # 'fixed' or 'pca'
         self._fixed_directions = None  # 2D directions (dir1, dir2)
         self._fixed_directions_3d = None  # 3D directions (dir1, dir2, dir3)
@@ -206,31 +211,49 @@ class Explorer:
     
     def _normalize_direction_filterwise(self, direction: torch.Tensor) -> torch.Tensor:
         """
-        实现Filter-wise Normalization (Li et al.)
+        实现 Filter-wise Normalization (Li et al., 2018)。
         
-        对每一层参数的扰动向量进行归一化，使得不同层的扰动幅度一致。
+        不仅对方向向量进行单位化，还会根据该层参数的范数进行缩放。
+        d_new = d / ||d|| * ||w||
+        这样使得扰动的相对尺度与参数的尺度一致。
         
         Args:
             direction: 展平的扰动方向向量
             
         Returns:
-            归一化后的方向向量
+            归一化并缩放后的方向向量
         """
         normalized_parts = []
         idx = 0
         
+        # 确保有基准参数用于计算范数
+        # self._flattened_params 是在 _backup_parameters() 中初始化的 (on CPU)
+        if self._flattened_params is None:
+             # 如果没有基准参数，退化为简单的单位归一化 (Log warning?)
+            base_params = None
+        else:
+            base_params = self._flattened_params
+            
         for shape in self._param_shapes:
             size = np.prod(shape)
             layer_direction = direction[idx:idx+size]
             
-            # 计算该层的Frobenius范数
-            layer_norm = torch.norm(layer_direction.reshape(shape), p='fro')
+            # 计算方向向量的范数
+            layer_d = layer_direction.reshape(shape)
+            d_norm = torch.norm(layer_d, p='fro')
             
-            # 归一化：如果范数不为0，则除以范数
-            if layer_norm > 1e-8:
-                normalized_layer = layer_direction / layer_norm
-            else:
-                normalized_layer = layer_direction
+            scale = 1.0
+            if d_norm > 1e-8:
+                scale = 1.0 / d_norm
+                
+                # 如果有基准参数，应用 Li et al. 的 scaling: * ||w||
+                if base_params is not None:
+                    # base_params 在 CPU，需要移动到 device
+                    layer_w = base_params[idx:idx+size].to(layer_direction.device).reshape(shape)
+                    w_norm = torch.norm(layer_w, p='fro')
+                    scale *= w_norm
+            
+            normalized_layer = layer_direction * scale
             
             normalized_parts.append(normalized_layer)
             idx += size
@@ -262,8 +285,14 @@ class Explorer:
         """
         给定已归一化且近似正交的 dir1/dir2，再生成一个与它们正交的第三方向。
         """
-        rand = torch.randn_like(self._flattened_params)
-        dir3 = self._normalize_direction_filterwise(rand)
+        device = dir1.device
+        rand = torch.randn_like(self._flattened_params, device=device)
+        dir3 = self._normalize_direction_filterwise(rand.to(device)) # 确保在同一设备
+        
+        # 确保dir3在正确设备
+        if dir3.device != device:
+            dir3 = dir3.to(device)
+            
         dir3 = dir3 - torch.dot(dir1, dir3) * dir1 - torch.dot(dir2, dir3) * dir2
         dir3 = self._normalize_direction_filterwise(dir3)
         return dir3
@@ -645,13 +674,22 @@ class Explorer:
 
         return result
     
-    def log_position(self, epoch: int, verbose: bool = False):
+    def log_position(
+        self,
+        epoch: int,
+        verbose: bool = False,
+        loss: Optional[float] = None,
+        compute_loss: bool = False,
+        val_loss: Optional[float] = None,
+    ):
         """
         动态轨迹模式：记录当前epoch的权重位置。
         
         Args:
             epoch: 当前epoch编号
             verbose: 是否打印信息
+            loss: 可选。当前点的“真实loss”（例如训练循环中计算的epoch平均train loss）。
+            compute_loss: 若为True且loss未提供，则用Explorer内部的loss逻辑在self.data_loader上评估一次loss（默认最多10个batch）。
         """
         # 获取当前权重
         current_params = []
@@ -666,6 +704,18 @@ class Explorer:
         
         self._trajectory_weights.append(offset)
         self._trajectory_epochs.append(epoch)
+
+        # Record optional scalar loss for this point.
+        if loss is None and compute_loss:
+            try:
+                loss = float(self._evaluate_loss())
+            except Exception as e:
+                warnings.warn(f"Failed to compute loss at epoch={epoch}: {e}")
+                loss = None
+        self._trajectory_losses.append(loss)
+        
+        # Record optional validation loss
+        self._trajectory_val_losses.append(val_loss)
         
         # 如果使用PCA模式，收集所有权重用于后续PCA
         if self._trajectory_mode == 'pca':
@@ -714,9 +764,14 @@ class Explorer:
                 self._fixed_directions_3d = (dir1, dir2, dir3)
             
             # 投影到固定方向（包含第三个方向，便于3D轨迹）
-            traj_1 = [torch.dot(weight, dir1).item() for weight in self._trajectory_weights]
-            traj_2 = [torch.dot(weight, dir2).item() for weight in self._trajectory_weights]
-            traj_3 = [torch.dot(weight, dir3).item() for weight in self._trajectory_weights]
+            # 确保方向向量在CPU上（因为 _trajectory_weights 在CPU上）
+            dir1_cpu = dir1.cpu()
+            dir2_cpu = dir2.cpu()
+            dir3_cpu = dir3.cpu()
+            
+            traj_1 = [torch.dot(weight, dir1_cpu).item() for weight in self._trajectory_weights]
+            traj_2 = [torch.dot(weight, dir2_cpu).item() for weight in self._trajectory_weights]
+            traj_3 = [torch.dot(weight, dir3_cpu).item() for weight in self._trajectory_weights]
         
         elif mode == 'pca':
             # PCA降维
@@ -744,6 +799,13 @@ class Explorer:
             'traj_3': traj_3,
             'epochs': self._trajectory_epochs.copy(),
         }
+
+        if len(self._trajectory_losses) == len(self._trajectory_epochs):
+            result["losses"] = self._trajectory_losses.copy()
+        
+        # Add validation losses if available
+        if len(self._trajectory_val_losses) == len(self._trajectory_epochs):
+            result["val_losses"] = self._trajectory_val_losses.copy()
         
         # 保存到storage（如果提供）
         if self.storage is not None:

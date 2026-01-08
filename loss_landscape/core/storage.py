@@ -53,6 +53,14 @@ class LandscapeStorage:
             )
         """)
         
+        # 创建metadata表
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+        
         # 创建索引以提高查询性能
         self.conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_epoch ON landscape_points(epoch)
@@ -153,8 +161,11 @@ class LandscapeStorage:
         # 计算loss（需要重新评估，这里先设为None，后续可以优化）
         # 为了简化，我们假设loss已经在其他地方计算
         losses = trajectory_data.get('losses', [None] * len(traj_1))
+        val_losses = trajectory_data.get('val_losses', [None] * len(traj_1))
         
         # 准备批量插入数据
+        # 注意：当前schema只支持一个loss字段，我们保存train loss
+        # val_losses会通过export_for_frontend导出
         data = []
         for i, epoch in enumerate(epochs):
             data.append([
@@ -173,6 +184,60 @@ class LandscapeStorage:
                 data
             )
             self.conn.commit()
+        
+        # 保存val_losses到metadata（如果存在）
+        if any(vl is not None for vl in val_losses):
+            import json
+            val_losses_json = json.dumps(val_losses, indent=2)
+            self.conn.execute("""
+                DELETE FROM metadata WHERE key = 'trajectory_val_losses'
+            """)
+            self.conn.execute("""
+                INSERT INTO metadata (key, value) 
+                VALUES ('trajectory_val_losses', ?)
+            """, [val_losses_json])
+            self.conn.commit()
+    
+    def save_metadata(self, metadata: Dict[str, Any]):
+        """
+        保存metadata信息到数据库。
+        
+        Args:
+            metadata: 包含各种metadata信息的字典，会被序列化为JSON存储
+        """
+        import json
+        
+        # 将整个metadata字典序列化为JSON
+        metadata_json = json.dumps(metadata, indent=2, ensure_ascii=False)
+        
+        # 先删除旧记录（如果存在），然后插入新记录
+        self.conn.execute("""
+            DELETE FROM metadata WHERE key = 'full_metadata'
+        """)
+        self.conn.execute("""
+            INSERT INTO metadata (key, value) 
+            VALUES ('full_metadata', ?)
+        """, [metadata_json])
+        self.conn.commit()
+    
+    def get_metadata(self) -> Optional[Dict[str, Any]]:
+        """
+        从数据库读取metadata信息。
+        
+        Returns:
+            metadata字典，如果不存在则返回None
+        """
+        try:
+            result = self.conn.execute("""
+                SELECT value FROM metadata WHERE key = 'full_metadata'
+            """).fetchone()
+            
+            if result:
+                import json
+                return json.loads(result[0])
+            return None
+        except Exception:
+            return None
     
     def close(self):
         """关闭连接并刷新数据"""
@@ -288,6 +353,11 @@ class LandscapeStorage:
 
             result["Z"] = Z3.tolist()
             result["loss_grid_3d"] = loss_grid_3d.tolist()
+            # Also export 1D axes so the frontend can build correctly-scaled slice grids.
+            # (Surface X/Y can be a different resolution than volume sampling.)
+            result["volume_x"] = [float(v) for v in unique_x]
+            result["volume_y"] = [float(v) for v in unique_y]
+            result["volume_z"] = [float(v) for v in unique_z]
 
         # 添加轨迹数据
         if len(trajectory_df) > 0:
@@ -297,12 +367,49 @@ class LandscapeStorage:
                 "traj_3": trajectory_df["z"].tolist(),
                 "epochs": trajectory_df["epoch"].tolist(),
             }
+            # 如果轨迹数据中有loss值，也导出
+            if "loss" in trajectory_df.columns:
+                losses = trajectory_df["loss"].tolist()
+                # 过滤掉None值，保持与epochs的对应关系
+                if any(l is not None for l in losses):
+                    result["trajectory_data"]["losses"] = losses
+            
+            # 从metadata中读取val_losses（如果存在）
+            try:
+                val_losses_result = self.conn.execute("""
+                    SELECT value FROM metadata WHERE key = 'trajectory_val_losses'
+                """).fetchone()
+                if val_losses_result:
+                    import json
+                    val_losses = json.loads(val_losses_result[0])
+                    if any(vl is not None for vl in val_losses):
+                        result["trajectory_data"]["val_losses"] = val_losses
+            except Exception:
+                pass
+        
+        # 添加metadata信息
+        metadata = self.get_metadata()
+        if metadata:
+            result["metadata"] = metadata
+        
+        # 在导出前清洗 NaN/Inf，避免前端 JSON.parse 失败
+        import math
+        def _sanitize(obj):
+            if isinstance(obj, float):
+                return obj if math.isfinite(obj) else None
+            if isinstance(obj, dict):
+                return {k: _sanitize(v) for k, v in obj.items()}
+            if isinstance(obj, (list, tuple)):
+                return [_sanitize(v) for v in obj]
+            return obj
+
+        sanitized = _sanitize(result)
         
         # 保存为JSON（如果提供路径）
         if output_path:
             import json
             with open(output_path, 'w') as f:
-                json.dump(result, f, indent=2)
+                json.dump(sanitized, f, indent=2)
         
-        return result
+        return sanitized
 

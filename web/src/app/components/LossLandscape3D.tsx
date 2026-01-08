@@ -17,6 +17,7 @@ interface LossLandscape3DProps {
     traj_2: number[];
     traj_3?: number[];
     epochs: number[];
+    losses?: number[];
   };
   /**
    * Optional axis labels, so Slice view can repurpose the component for
@@ -238,16 +239,18 @@ function TrajectoryLine({
   lossGrid,
   norm,
 }: { 
-  trajectory: { traj_1: number[]; traj_2: number[]; traj_3?: number[]; epochs: number[] };
+  trajectory: { traj_1: number[]; traj_2: number[]; traj_3?: number[]; epochs: number[]; losses?: number[] };
   X: number[][];
   Y: number[][];
   lossGrid: number[][];
   norm: Normalizer;
 }) {
-  const { points, epochs } = useMemo(() => {
+  const { points, epochs, trainingLosses, landscapeLosses } = useMemo(() => {
     const points: THREE.Vector3[] = [];
     const epochs: number[] = [];
-    const { traj_1, traj_2, traj_3 } = trajectory;
+    const trainingLosses: (number | null)[] = [];
+    const landscapeLosses: number[] = [];
+    const { traj_1, traj_2, traj_3, losses: trajectoryLosses } = trajectory;
 
     console.log('[TrajectoryLine] Building trajectory points:', {
       traj1Length: traj_1?.length,
@@ -270,6 +273,9 @@ function TrajectoryLine({
     const yMin = Math.min(...flatY);
     const yMax = Math.max(...flatY);
     
+    // Build array of points with their epochs and loss values for sorting and debugging
+    const pointData: Array<{ point: THREE.Vector3; epoch: number; index: number; loss: number; trainingLoss: number | null; alpha: number; beta: number }> = [];
+    
     for (let i = 0; i < traj_1.length; i++) {
       const alpha = traj_1[i];
       const beta = traj_2[i];
@@ -279,25 +285,63 @@ function TrajectoryLine({
       const betaClamped = Math.max(yMin, Math.min(yMax, beta));
       
       // Always interpolate loss from 2D grid (3D Surface shows 2D surface, not 3D volume)
-      const loss = interpolateLoss(alphaClamped, betaClamped, X, Y, lossGrid);
+      const landscapeLoss = interpolateLoss(alphaClamped, betaClamped, X, Y, lossGrid);
+      
+      // Get training loss if available
+      const trainingLoss = trajectoryLosses && i < trajectoryLosses.length ? trajectoryLosses[i] : null;
       
       const x = norm.toX(alphaClamped);
-      const y = norm.toZ(loss);
+      const y = norm.toZ(landscapeLoss) + 0.002; // Tiny offset to prevent Z-fighting
       const z = norm.toY(betaClamped);
       
       // Validate that point is within reasonable bounds
       if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
-        points.push(new THREE.Vector3(x, y, z));
-        epochs.push(trajectory.epochs[i] || i);
+        const epoch = trajectory.epochs[i] ?? i;
+        pointData.push({
+          point: new THREE.Vector3(x, y, z),
+          epoch,
+          index: i,
+          loss: landscapeLoss,
+          trainingLoss,
+          alpha: alphaClamped,
+          beta: betaClamped,
+        });
       }
     }
 
+    // Sort by epoch (low to high) to ensure correct trajectory order
+    pointData.sort((a, b) => a.epoch - b.epoch);
+
+    // Extract sorted points, epochs, and losses
+    for (const { point, epoch, loss, trainingLoss } of pointData) {
+      points.push(point);
+      epochs.push(epoch);
+      landscapeLosses.push(loss);
+      trainingLosses.push(trainingLoss);
+    }
+
+    // Debug: Check first and last epoch loss values
+    const firstPointData = pointData[0];
+    const lastPointData = pointData[pointData.length - 1];
+    
     console.log('[TrajectoryLine] Generated points:', {
       pointCount: points.length,
       firstPoint: points[0],
       lastPoint: points[points.length - 1],
-      firstPointData: { alpha: traj_1[0], beta: traj_2[0], loss: points[0]?.y },
-      lastPointData: { alpha: traj_1[traj_1.length - 1], beta: traj_2[traj_2.length - 1], loss: points[points.length - 1]?.y },
+      firstEpoch: epochs[0],
+      lastEpoch: epochs[epochs.length - 1],
+      firstLoss: firstPointData?.loss,
+      lastLoss: lastPointData?.loss,
+      firstAlpha: firstPointData?.alpha,
+      firstBeta: firstPointData?.beta,
+      lastAlpha: lastPointData?.alpha,
+      lastBeta: lastPointData?.beta,
+      lossComparison: firstPointData && lastPointData ? {
+        firstLoss: firstPointData.loss,
+        lastLoss: lastPointData.loss,
+        lossDecreased: firstPointData.loss > lastPointData.loss,
+        lossIncreased: firstPointData.loss < lastPointData.loss,
+      } : null,
       normStats: {
         xRange: [norm.stats.xMin, norm.stats.xMax],
         yRange: [norm.stats.yMin, norm.stats.yMax],
@@ -305,7 +349,7 @@ function TrajectoryLine({
       },
     });
 
-    return { points, epochs };
+    return { points, epochs, trainingLosses, landscapeLosses };
   }, [trajectory, X, Y, lossGrid, norm]);
 
   // Sample points to show (every N-th point to avoid clutter)
@@ -322,6 +366,11 @@ function TrajectoryLine({
     indices.push(total - 1); // Always show last
     return indices;
   }, [points]);
+
+  // Don't render if we don't have enough points (Line needs at least 2 points)
+  if (points.length < 2) {
+    return null;
+  }
 
   return (
     <>
@@ -345,6 +394,9 @@ function TrajectoryLine({
         const isStart = i === 0;
         const isEnd = i === points.length - 1;
         const radius = isStart || isEnd ? 0.04 : 0.02;
+        const epoch = epochs[i];
+        const trainingLoss = trainingLosses[i];
+        const landscapeLoss = landscapeLosses[i];
         
         return (
           <mesh key={i} position={points[i]}>
@@ -394,27 +446,75 @@ function interpolateLoss(x: number, y: number, X: number[][], Y: number[][], los
     return 0;
   }
 
+  // Validate lossGrid dimensions match X and Y
+  // Allow flexible dimensions - sometimes lossGrid might be [N][M] while X/Y are [N+1][M+1] or vice versa
+  // Just check if we have enough rows to do interpolation
+  if (!lossGrid || lossGrid.length < 2) {
+    return 0;
+  }
+  
+  // Use the minimum common dimensions
+  const safeRows = Math.min(rows, lossGrid.length);
+  const safeCols = Math.min(cols, lossGrid[0]?.length || 0);
+  
+  if (safeRows < 2 || safeCols < 2) {
+      return 0;
+  }
+
   // Find the closest grid cell using distance
   let minDist = Infinity;
   let bestValue = lossGrid[0]?.[0] ?? 0;
   
   // First, try to find exact cell
-  for (let i = 0; i < rows; i++) {
-    for (let j = 0; j < cols; j++) {
+  for (let i = 0; i < safeRows; i++) {
+    // Check if lossGrid[i] exists and has the right length
+    if (!lossGrid[i]) {
+      continue; // Skip this row if it's invalid
+    }
+    const rowLen = Math.min(cols, lossGrid[i].length);
+    
+    for (let j = 0; j < rowLen; j++) {
+      // Validate X and Y arrays
+      if (!X[i] || !Y[i] || X[i][j] === undefined || Y[i][j] === undefined) {
+        continue; // Skip invalid cells
+      }
+      
       const gridX = X[i][j];
       const gridY = Y[i][j];
       const dist = Math.sqrt((x - gridX) ** 2 + (y - gridY) ** 2);
       
       if (dist < minDist) {
         minDist = dist;
-        bestValue = lossGrid[i][j];
+        const lossValue = lossGrid[i][j];
+        if (lossValue !== undefined && Number.isFinite(lossValue)) {
+          bestValue = lossValue;
+        }
       }
     }
   }
 
   // Try bilinear interpolation if we're within a reasonable cell
-  for (let i = 0; i < rows - 1; i++) {
-    for (let j = 0; j < cols - 1; j++) {
+  for (let i = 0; i < safeRows - 1; i++) {
+    // Validate row exists in all arrays
+    if (!lossGrid[i] || !lossGrid[i + 1] || !X[i] || !X[i + 1] || !Y[i] || !Y[i + 1]) {
+      continue;
+    }
+    
+    const rowLen = Math.min(safeCols, lossGrid[i].length, lossGrid[i+1].length);
+    
+    for (let j = 0; j < rowLen - 1; j++) {
+      // Validate all required cells exist
+      if (
+        lossGrid[i][j] === undefined || lossGrid[i][j + 1] === undefined ||
+        lossGrid[i + 1][j] === undefined || lossGrid[i + 1][j + 1] === undefined ||
+        X[i][j] === undefined || X[i][j + 1] === undefined ||
+        X[i + 1][j] === undefined || X[i + 1][j + 1] === undefined ||
+        Y[i][j] === undefined || Y[i][j + 1] === undefined ||
+        Y[i + 1][j] === undefined || Y[i + 1][j + 1] === undefined
+      ) {
+        continue; // Skip incomplete cells
+      }
+      
       const x00 = X[i][j];
       const y00 = Y[i][j];
       const x01 = X[i][j + 1];
@@ -436,15 +536,49 @@ function interpolateLoss(x: number, y: number, X: number[][], Y: number[][], los
         const z01 = lossGrid[i][j + 1];
         const z10 = lossGrid[i + 1][j];
         const z11 = lossGrid[i + 1][j + 1];
+        
+        // Validate all loss values are finite
+        if (!Number.isFinite(z00) || !Number.isFinite(z01) || 
+            !Number.isFinite(z10) || !Number.isFinite(z11)) {
+          continue; // Skip if any value is invalid
+        }
 
         // Normalize coordinates within cell
         const dx = xMax > xMin ? (x - xMin) / (xMax - xMin) : 0.5;
         const dy = yMax > yMin ? (y - yMin) / (yMax - yMin) : 0.5;
 
-        const z = z00 * (1 - dx) * (1 - dy) +
-                  z10 * dx * (1 - dy) +
-                  z01 * (1 - dx) * dy +
-                  z11 * dx * dy;
+        // Use triangle-based interpolation to match the 3D mesh geometry.
+        // The mesh splits the quad into two triangles:
+        // T1: (0,0)-(0,1)-(1,0)  => matches dx + dy <= 1 (if dx,dy are 0..1 based on corners)
+        // T2: (0,1)-(1,1)-(1,0)  => matches dx + dy > 1
+        // Note: Indices in geometry are a(0,0), b(0,1), c(1,0), d(1,1).
+        // Triangles are (a,b,c) and (b,d,c).
+        // Triangle 1 (a,b,c): (0,0), (0,1), (1,0). Plane z = z00 + (z10-z00)*dx + (z01-z00)*dy
+        // Triangle 2 (b,d,c): (0,1), (1,1), (1,0). Plane z = z11 + (z01-z11)*(1-dx) + (z10-z11)*(1-dy)
+
+        let z = 0;
+        
+        // Check if we are in the "upper-left" triangle (in standard image coords) or "lower-right"
+        // Note: dx is along i (rows), dy is along j (cols) in our loops? 
+        // Wait, X[i][j] vs X[i+1][j]. i is usually row. 
+        // In geometry generation:
+        // a = i,j; b = i,j+1; c = i+1,j; d = i+1,j+1.
+        // dx moves from i to i+1. dy moves from j to j+1.
+        // T1: (i,j), (i,j+1), (i+1,j) => (0,0), (0,1), (1,0) in (dx, dy) space.
+        // Condition for T1: dx + dy <= 1?
+        // Line (0,1) to (1,0) is x + y = 1.
+        // Origin (0,0) is satisfying 0+0 <= 1. So yes.
+        
+        if (dx + dy <= 1) {
+          // Triangle 1: (0,0), (0,1), (1,0) -> z00, z01, z10
+          // z = z00 + (z10 - z00) * dx + (z01 - z00) * dy
+          z = z00 + (z10 - z00) * dx + (z01 - z00) * dy;
+        } else {
+          // Triangle 2: (0,1), (1,1), (1,0) -> z01, z11, z10
+          // We interpolate from (1,1) back.
+          // z = z11 + (z01 - z11) * (1 - dx) + (z10 - z11) * (1 - dy)
+          z = z11 + (z01 - z11) * (1 - dx) + (z10 - z11) * (1 - dy);
+        }
 
         return z;
       }

@@ -352,6 +352,10 @@ function TrajectoryLine3D({
     // - β (traj_2) -> Z (depth)
     // - γ (traj_3) -> Y (up)
     // Loss is encoded in the volume texture (color/opacity), NOT as a spatial axis.
+    
+    // Build array of points with their epochs for sorting
+    const pointData: Array<{ point: THREE.Vector3; epoch: number; index: number }> = [];
+    
     for (let i = 0; i < traj_1.length; i++) {
       const ep = trajectory.epochs[i] || i;
       if (viewEpoch !== undefined && ep > viewEpoch) continue;
@@ -381,12 +385,24 @@ function TrajectoryLine3D({
       // const loss = interpolateLoss3D(alpha, beta, gamma, X, Y, Z, lossGrid3d);
 
       // Map: α→X, γ→Y (up), β→Z (depth)
-      points.push(new THREE.Vector3(
-        norm.toX(alpha),
-        norm.toZ3D(gamma),
-        norm.toY(beta)
-      ));
-      epochs.push(trajectory.epochs[i] || i);
+      pointData.push({
+        point: new THREE.Vector3(
+          norm.toX(alpha),
+          norm.toZ3D(gamma),
+          norm.toY(beta)
+        ),
+        epoch: ep,
+        index: i,
+      });
+    }
+    
+    // Sort by epoch (low to high) to ensure correct trajectory order
+    pointData.sort((a, b) => a.epoch - b.epoch);
+    
+    // Extract sorted points and epochs
+    for (const { point, epoch } of pointData) {
+      points.push(point);
+      epochs.push(epoch);
     }
     
     console.log('[TrajectoryLine3D] Generated points:', {
@@ -425,6 +441,11 @@ function TrajectoryLine3D({
     indices.push(total - 1);
     return indices;
   }, [points]);
+
+  // Don't render if we don't have enough points (Line needs at least 2 points)
+  if (points.length < 2) {
+    return null;
+  }
 
   return (
     <>
