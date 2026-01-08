@@ -76,35 +76,59 @@ class LandscapeStorage:
         Args:
             surface_data: build_surface()返回的字典
         """
-        X = np.array(surface_data['X'])
-        Y = np.array(surface_data['Y'])
-        loss_grid = np.array(surface_data['loss_grid_2d'])
-        
-        grid_size = len(X)
-        epoch = surface_data.get('epoch', 0)  # 表面数据默认epoch=0
-        
-        # 准备批量插入数据
-        data = []
-        for i in range(grid_size):
-            for j in range(grid_size):
-                data.append(
-                    [
-                        epoch,
-                        float(X[i, j]),
-                        float(Y[i, j]),
-                        None,  # z坐标（3D体积使用）
-                        float(loss_grid[i, j]),
-                        False,  # is_trajectory
-                    ]
+        try:
+            X = np.array(surface_data['X'])
+            Y = np.array(surface_data['Y'])
+            loss_grid = np.array(surface_data['loss_grid_2d'])
+            
+            grid_size = len(X)
+            epoch = surface_data.get('epoch', 0)  # 表面数据默认epoch=0
+            
+            # 准备批量插入数据
+            data = []
+            for i in range(grid_size):
+                for j in range(grid_size):
+                    data.append(
+                        [
+                            epoch,
+                            float(X[i, j]),
+                            float(Y[i, j]),
+                            None,  # z坐标（3D体积使用）
+                            float(loss_grid[i, j]),
+                            False,  # is_trajectory
+                        ]
+                    )
+            
+            # 批量插入
+            if data:
+                self.conn.executemany(
+                    "INSERT INTO landscape_points (epoch, x, y, z, loss, is_trajectory) VALUES (?, ?, ?, ?, ?, ?)",
+                    data
                 )
-        
-        # 批量插入
-        if data:
-            self.conn.executemany(
-                "INSERT INTO landscape_points (epoch, x, y, z, loss, is_trajectory) VALUES (?, ?, ?, ?, ?, ?)",
-                data
-            )
-            self.conn.commit()
+                self.conn.commit()
+                print(f"[LandscapeStorage] Saved {len(data)} 2D surface points to database")
+            else:
+                print(f"[LandscapeStorage] WARNING: No data to save for surface (grid_size={grid_size})")
+        except Exception as e:
+            print(f"[LandscapeStorage] ERROR saving surface data: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
+
+        # Persist true baseline loss separately.
+        # NOTE: baseline_loss might not be present in the stored grid when grid_size is even (0 not sampled),
+        # so exporting baseline as min(loss_grid) is incorrect and can be wildly off.
+        if "baseline_loss" in surface_data:
+            try:
+                baseline = float(surface_data["baseline_loss"])
+                self.conn.execute("DELETE FROM metadata WHERE key = 'baseline_loss_2d'")
+                self.conn.execute(
+                    "INSERT INTO metadata (key, value) VALUES ('baseline_loss_2d', ?)",
+                    [str(baseline)],
+                )
+                self.conn.commit()
+            except Exception:
+                pass
 
     def save_volume(self, volume_data: Dict[str, Any]):
         """
@@ -145,6 +169,18 @@ class LandscapeStorage:
                 data,
             )
             self.conn.commit()
+
+        if "baseline_loss" in volume_data:
+            try:
+                baseline = float(volume_data["baseline_loss"])
+                self.conn.execute("DELETE FROM metadata WHERE key = 'baseline_loss_3d'")
+                self.conn.execute(
+                    "INSERT INTO metadata (key, value) VALUES ('baseline_loss_3d', ?)",
+                    [str(baseline)],
+                )
+                self.conn.commit()
+            except Exception:
+                pass
     
     def save_trajectory(self, trajectory_data: Dict[str, Any]):
         """
@@ -282,6 +318,17 @@ class LandscapeStorage:
         
         # 构建2D网格数据
         if len(surface_df) > 0:
+            # Prefer the true baseline loss saved by Explorer, if available.
+            baseline_loss_2d = None
+            try:
+                row = self.conn.execute(
+                    "SELECT value FROM metadata WHERE key = 'baseline_loss_2d'"
+                ).fetchone()
+                if row and row[0] is not None:
+                    baseline_loss_2d = float(row[0])
+            except Exception:
+                baseline_loss_2d = None
+
             # 获取唯一的x和y值
             unique_x = sorted(surface_df['x'].unique())
             unique_y = sorted(surface_df['y'].unique())
@@ -304,7 +351,7 @@ class LandscapeStorage:
                 "X": X.tolist(),
                 "Y": Y.tolist(),
                 "loss_grid_2d": loss_grid.tolist(),
-                "baseline_loss": float(loss_grid.min()),
+                "baseline_loss": float(baseline_loss_2d) if baseline_loss_2d is not None else float(loss_grid.min()),
                 "grid_size": grid_size,
                 "mode": "2d",
             }

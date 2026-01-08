@@ -54,6 +54,10 @@ function initializeSchema(conn: duckdb.Connection) {
   // Lightweight migration for existing DB files
   // (DuckDB supports ADD COLUMN IF NOT EXISTS)
   conn.run(`ALTER TABLE loss_landscape_data ADD COLUMN IF NOT EXISTS Z TEXT`);
+  conn.run(`ALTER TABLE loss_landscape_data ADD COLUMN IF NOT EXISTS export_metadata TEXT`);
+  conn.run(`ALTER TABLE loss_landscape_data ADD COLUMN IF NOT EXISTS import_source TEXT`);
+  conn.run(`ALTER TABLE loss_landscape_data ADD COLUMN IF NOT EXISTS import_filename TEXT`);
+  conn.run(`ALTER TABLE loss_landscape_data ADD COLUMN IF NOT EXISTS imported_at TIMESTAMP`);
   
   // Create trajectory_points table
   conn.run(`
@@ -88,7 +92,13 @@ export interface LossLandscapeData {
     traj_2: number[];
     traj_3?: number[];
     epochs: number[];
+    losses?: number[];
+    val_losses?: number[];
   };
+  export_metadata?: any; // Metadata from JSON file (training metadata) or .export.meta.json file
+  import_source?: string; // Source of import: 'upload', 'scan', 'run', 'generate', etc.
+  import_filename?: string; // Original filename if imported
+  imported_at?: Date | string; // When the data was imported
   skipDuplicateCheck?: boolean; // If true, always insert new record (for generate API)
 }
 
@@ -143,9 +153,9 @@ export async function saveLossLandscape(data: LossLandscapeData): Promise<number
   return new Promise((resolve, reject) => {
     const sql = `
       INSERT INTO loss_landscape_data
-        (id, config_path, run_dir, mode, direction, grid_size, X, Y, Z, loss_grid_2d, loss_grid_3d, baseline_loss, trajectory_data)
+        (id, config_path, run_dir, mode, direction, grid_size, X, Y, Z, loss_grid_2d, loss_grid_3d, baseline_loss, trajectory_data, export_metadata, import_source, import_filename, imported_at)
       VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id
     `;
     const params = [
@@ -162,6 +172,10 @@ export async function saveLossLandscape(data: LossLandscapeData): Promise<number
         data.loss_grid_3d ? JSON.stringify(data.loss_grid_3d) : null,
         data.baseline_loss,
         data.trajectory_data ? JSON.stringify(data.trajectory_data) : null,
+        data.export_metadata ? JSON.stringify(data.export_metadata) : null,
+        data.import_source || null,
+        data.import_filename || null,
+        data.imported_at ? (typeof data.imported_at === 'string' ? data.imported_at : data.imported_at.toISOString()) : new Date().toISOString(),
     ];
     conn.all(sql, ...params, (err: Error | null, rows: any[]) => {
       if (err) return reject(err);
@@ -198,6 +212,10 @@ export async function getLossLandscape(id: number): Promise<LossLandscapeData | 
             loss_grid_3d: row.loss_grid_3d ? JSON.parse(row.loss_grid_3d) : undefined,
             baseline_loss: row.baseline_loss,
             trajectory_data: row.trajectory_data ? JSON.parse(row.trajectory_data) : undefined,
+            export_metadata: row.export_metadata ? JSON.parse(row.export_metadata) : undefined,
+            import_source: row.import_source,
+            import_filename: row.import_filename,
+            imported_at: row.imported_at,
           });
         }
       }
@@ -228,6 +246,10 @@ export async function listLossLandscapes(): Promise<LossLandscapeData[]> {
               loss_grid_3d: row.loss_grid_3d ? JSON.parse(row.loss_grid_3d) : undefined,
               baseline_loss: row.baseline_loss,
               trajectory_data: row.trajectory_data ? JSON.parse(row.trajectory_data) : undefined,
+              export_metadata: row.export_metadata ? JSON.parse(row.export_metadata) : undefined,
+              import_source: row.import_source,
+              import_filename: row.import_filename,
+              imported_at: row.imported_at,
             }))
           );
         }

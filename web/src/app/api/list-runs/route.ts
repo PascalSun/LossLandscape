@@ -51,7 +51,7 @@ export async function GET() {
           for (const entry of entries) {
             // Skip metadata files
             if (entry.includes('.export.meta.') || entry.includes('.meta.')) continue;
-            if (entry.endsWith('.json') || entry.endsWith('.landscape') || entry.endsWith('.npz')) {
+            if (entry.endsWith('.json')) {
               return true;
             }
           }

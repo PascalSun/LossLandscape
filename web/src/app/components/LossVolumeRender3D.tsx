@@ -609,6 +609,12 @@ export default function LossVolumeRender3D({
   const isDraggingLegend = useRef(false);
   const dragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const posStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  
+  // Slider panel position and drag state
+  const [sliderPanelPos, setSliderPanelPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const isDraggingSliderPanel = useRef(false);
+  const sliderDragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const sliderPosStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const ui = useMemo(() => {
     // Keep overlays readable in both themes (match overall app aesthetic)
@@ -700,16 +706,23 @@ export default function LossVolumeRender3D({
     return { minV, maxV, planes, dataMinV, dataMaxV };
   }, [lossGrid3d, step, threshold, ZArray, norm, colorScale, alphaGamma, alphaFloor]);
 
-  // Legend drag handlers to avoid blocking top-right
+  // Legend and slider panel drag handlers
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
-      if (!isDraggingLegend.current) return;
-      const dx = e.clientX - dragStart.current.x;
-      const dy = e.clientY - dragStart.current.y;
-      setLegendPos({ x: posStart.current.x + dx, y: posStart.current.y + dy });
+      if (isDraggingLegend.current) {
+        const dx = e.clientX - dragStart.current.x;
+        const dy = e.clientY - dragStart.current.y;
+        setLegendPos({ x: posStart.current.x + dx, y: posStart.current.y + dy });
+      }
+      if (isDraggingSliderPanel.current) {
+        const dx = e.clientX - sliderDragStart.current.x;
+        const dy = e.clientY - sliderDragStart.current.y;
+        setSliderPanelPos({ x: sliderPosStart.current.x + dx, y: sliderPosStart.current.y + dy });
+      }
     };
     const onUp = () => {
       if (isDraggingLegend.current) isDraggingLegend.current = false;
+      if (isDraggingSliderPanel.current) isDraggingSliderPanel.current = false;
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -723,6 +736,13 @@ export default function LossVolumeRender3D({
     isDraggingLegend.current = true;
     dragStart.current = { x: e.clientX, y: e.clientY };
     posStart.current = legendPos;
+    e.preventDefault();
+  };
+
+  const startSliderPanelDrag = (e: React.MouseEvent) => {
+    isDraggingSliderPanel.current = true;
+    sliderDragStart.current = { x: e.clientX, y: e.clientY };
+    sliderPosStart.current = sliderPanelPos;
     e.preventDefault();
   };
 
@@ -814,14 +834,21 @@ export default function LossVolumeRender3D({
               style={{
                 width: 24,
                 height: 160,
-                borderRadius: 12,
-                border: `2px solid ${isDark ? 'rgba(255,255,255,0.35)' : 'rgba(15,23,42,0.22)'}`,
-                background: `linear-gradient(to top, ${Array.from({ length: 12 }, (_, i) => {
-                  const t = i / 11;
-                  const c = getViridisColor(t);
-                  const rgb = `rgb(${c.r},${c.g},${c.b})`;
-                  return rgb;
-                }).join(',')})`,
+                borderRadius: 0,
+                border: 'none',
+                background: `linear-gradient(to top, ${(() => {
+                  const steps = 20; // More steps for smoother gradient
+                  const colors: string[] = [];
+                  for (let i = 0; i <= steps; i++) {
+                    // Ensure exact boundaries: t=0 for first, t=1 for last
+                    const t = i === 0 ? 0 : i === steps ? 1 : i / steps;
+                    const c = getViridisColor(t);
+                    const rgb = `rgb(${c.r},${c.g},${c.b})`;
+                    const stopPercent = i === 0 ? '0%' : i === steps ? '100%' : `${(i / steps * 100).toFixed(2)}%`;
+                    colors.push(`${rgb} ${stopPercent}`);
+                  }
+                  return colors.join(', ');
+                })()})`,
                 boxShadow: isDark
                   ? '0 4px 12px rgba(0,0,0,0.3), inset 0 0 20px rgba(255,255,255,0.08)'
                   : '0 4px 12px rgba(15,23,42,0.10), inset 0 0 20px rgba(255,255,255,0.25)',
@@ -1040,13 +1067,13 @@ export default function LossVolumeRender3D({
         </div>
       </div>
 
-      {/* Use regular HTML instead of drei Html to avoid R3F hook errors */}
+      {/* Slider controls panel (bottom-right, draggable, same width as legend) */}
       <div
         style={{
           position: 'absolute',
-          left: 12,
-          bottom: 12,
-          right: 12,
+          right: 16,
+          bottom: 16,
+          transform: `translate(${sliderPanelPos.x}px, ${sliderPanelPos.y}px)`,
           display: 'grid',
           gap: 10,
           padding: '14px 16px',
@@ -1056,20 +1083,35 @@ export default function LossVolumeRender3D({
           backdropFilter: 'blur(10px)',
           color: ui.text,
           fontSize: 13,
-          boxShadow: isDark ? '0 8px 32px rgba(0,0,0,0.4)' : '0 8px 32px rgba(15,23,42,0.12)',
+          width: 300,
+          boxSizing: 'border-box',
+          boxShadow: ui.panelShadow,
+          zIndex: 10,
+          overflow: 'hidden',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 4 }}>
-          <div style={{ fontWeight: 800, fontSize: 14 }}>{t.viewVolume}</div>
-          <div style={{ opacity: isDark ? 0.85 : 0.8, fontSize: 11, fontFamily: 'monospace' }}>
+        <div 
+          style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            gap: 12, 
+            alignItems: 'center', 
+            marginBottom: 4,
+            cursor: isDraggingSliderPanel.current ? 'grabbing' : 'grab',
+            minWidth: 0,
+          }}
+          onMouseDown={startSliderPanelDrag}
+        >
+          <div style={{ fontWeight: 800, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{t.view3DVolume}</div>
+          <div style={{ opacity: isDark ? 0.85 : 0.8, fontSize: 11, fontFamily: 'monospace', flexShrink: 0 }}>
             {planes.length} slices
           </div>
         </div>
-        <div style={{ fontSize: 11, opacity: isDark ? 0.75 : 0.78, marginBottom: 8, lineHeight: 1.4 }}>
+        <div style={{ fontSize: 11, opacity: isDark ? 0.75 : 0.78, marginBottom: 8, lineHeight: 1.4, wordWrap: 'break-word', overflowWrap: 'break-word' }}>
           Volume rendering: all slices blended together. Brighter = higher loss. Rotate to see 3D structure.
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 70px', gap: 12, alignItems: 'center' }}>
-          <div style={{ fontWeight: 700, fontSize: 12 }}>{t.opacity}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '85px 1fr 55px', gap: 8, alignItems: 'center' }}>
+          <div style={{ fontWeight: 700, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.opacity}</div>
           <input
             type="range"
             min={0.05}
@@ -1077,12 +1119,13 @@ export default function LossVolumeRender3D({
             step={0.01}
             value={opacity}
             onChange={(e) => setOpacity(parseFloat(e.target.value))}
-            style={{ accentColor: '#fbbf24' }}
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{ accentColor: '#fbbf24', minWidth: 0 }}
           />
-          <div style={{ textAlign: 'right', opacity: 0.9, fontFamily: 'monospace', fontSize: 12 }}>{opacity.toFixed(2)}</div>
+          <div style={{ textAlign: 'right', opacity: 0.9, fontFamily: 'monospace', fontSize: 11 }}>{opacity.toFixed(2)}</div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 70px', gap: 12, alignItems: 'center' }}>
-          <div style={{ fontWeight: 700, fontSize: 12 }}>{t.step}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '85px 1fr 55px', gap: 8, alignItems: 'center' }}>
+          <div style={{ fontWeight: 700, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.step}</div>
           <input
             type="range"
             min={1}
@@ -1090,12 +1133,13 @@ export default function LossVolumeRender3D({
             step={1}
             value={step}
             onChange={(e) => setStep(parseInt(e.target.value, 10))}
-            style={{ accentColor: '#fbbf24' }}
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{ accentColor: '#fbbf24', minWidth: 0 }}
           />
-          <div style={{ textAlign: 'right', opacity: 0.9, fontFamily: 'monospace', fontSize: 12 }}>{step}</div>
+          <div style={{ textAlign: 'right', opacity: 0.9, fontFamily: 'monospace', fontSize: 11 }}>{step}</div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 70px', gap: 12, alignItems: 'center' }}>
-          <div style={{ fontWeight: 700, fontSize: 12 }}>Threshold</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '85px 1fr 55px', gap: 8, alignItems: 'center' }}>
+          <div style={{ fontWeight: 700, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Threshold</div>
           <input
             type="range"
             min={0}
@@ -1103,13 +1147,14 @@ export default function LossVolumeRender3D({
             step={0.01}
             value={threshold}
             onChange={(e) => setThreshold(parseFloat(e.target.value))}
-            style={{ accentColor: '#fbbf24' }}
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{ accentColor: '#fbbf24', minWidth: 0 }}
           />
-          <div style={{ textAlign: 'right', opacity: 0.9, fontFamily: 'monospace', fontSize: 12 }}>{threshold.toFixed(2)}</div>
+          <div style={{ textAlign: 'right', opacity: 0.9, fontFamily: 'monospace', fontSize: 11 }}>{threshold.toFixed(2)}</div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 70px', gap: 12, alignItems: 'center' }}>
-          <div style={{ fontWeight: 700, fontSize: 12 }}>Alpha curve</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '85px 1fr 55px', gap: 8, alignItems: 'center' }}>
+          <div style={{ fontWeight: 700, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Alpha curve</div>
           <input
             type="range"
             min={0.2}
@@ -1117,13 +1162,14 @@ export default function LossVolumeRender3D({
             step={0.01}
             value={alphaGamma}
             onChange={(e) => setAlphaGamma(parseFloat(e.target.value))}
-            style={{ accentColor: '#fbbf24' }}
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{ accentColor: '#fbbf24', minWidth: 0 }}
           />
-          <div style={{ textAlign: 'right', opacity: 0.9, fontFamily: 'monospace', fontSize: 12 }}>{alphaGamma.toFixed(2)}</div>
+          <div style={{ textAlign: 'right', opacity: 0.9, fontFamily: 'monospace', fontSize: 11 }}>{alphaGamma.toFixed(2)}</div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr 70px', gap: 12, alignItems: 'center' }}>
-          <div style={{ fontWeight: 700, fontSize: 12 }}>Alpha floor</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '85px 1fr 55px', gap: 8, alignItems: 'center' }}>
+          <div style={{ fontWeight: 700, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Alpha floor</div>
           <input
             type="range"
             min={0}
@@ -1131,12 +1177,13 @@ export default function LossVolumeRender3D({
             step={0.005}
             value={alphaFloor}
             onChange={(e) => setAlphaFloor(parseFloat(e.target.value))}
-            style={{ accentColor: '#fbbf24' }}
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{ accentColor: '#fbbf24', minWidth: 0 }}
           />
-          <div style={{ textAlign: 'right', opacity: 0.9, fontFamily: 'monospace', fontSize: 12 }}>{alphaFloor.toFixed(3)}</div>
+          <div style={{ textAlign: 'right', opacity: 0.9, fontFamily: 'monospace', fontSize: 11 }}>{alphaFloor.toFixed(3)}</div>
         </div>
 
-        <div style={{ fontSize: 10, opacity: 0.6, marginTop: 4 }}>
+        <div style={{ fontSize: 10, opacity: 0.6, marginTop: 4, wordWrap: 'break-word', overflowWrap: 'break-word' }}>
           Filter low-loss regions (0 = show all, higher = only high-loss)
         </div>
       </div>

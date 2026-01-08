@@ -852,14 +852,21 @@ export default function LossLandscape3D({
               style={{
                 width: 24,
                 height: 160,
-                borderRadius: 12,
-                border: `2px solid ${isDark ? 'rgba(255,255,255,0.35)' : 'rgba(15,23,42,0.22)'}`,
-                background: `linear-gradient(to top, ${Array.from({ length: 12 }, (_, i) => {
-                  const t = i / 11;
-                  const c = getViridisColorNormalized(t);
-                  const rgb = `rgb(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)})`;
-                  return rgb;
-                }).join(',')})`,
+                borderRadius: 0,
+                border: 'none',
+                background: `linear-gradient(to top, ${(() => {
+                  const steps = 20; // More steps for smoother gradient
+                  const colors: string[] = [];
+                  for (let i = 0; i <= steps; i++) {
+                    // Ensure exact boundaries: t=0 for first, t=1 for last
+                    const t = i === 0 ? 0 : i === steps ? 1 : i / steps;
+                    const c = getViridisColorNormalized(t);
+                    const rgb = `rgb(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)})`;
+                    const stopPercent = i === 0 ? '0%' : i === steps ? '100%' : `${(i / steps * 100).toFixed(2)}%`;
+                    colors.push(`${rgb} ${stopPercent}`);
+                  }
+                  return colors.join(', ');
+                })()})`,
                 boxShadow: isDark
                   ? '0 4px 12px rgba(0,0,0,0.3), inset 0 0 20px rgba(255,255,255,0.1)'
                   : '0 4px 12px rgba(15,23,42,0.10), inset 0 0 20px rgba(255,255,255,0.25)',

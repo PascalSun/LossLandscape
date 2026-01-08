@@ -1,6 +1,6 @@
 /**
  * API route to load landscape data from a run directory
- * Scans the run directory for .npz or .landscape files and loads them
+ * Scans the run directory for .json files and loads them
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -8,12 +8,6 @@ import { readdirSync, statSync, existsSync } from 'fs';
 import { join } from 'path';
 import path from 'path';
 
-import { npzToJson } from '@/lib/npz';
-import { 
-  landscapeToJson, 
-  ExportInProgressError, 
-  ExportFailedError 
-} from '@/lib/landscape-export';
 import { importNpzData } from '@/lib/import-npz';
 import fs from 'fs';
 
@@ -22,12 +16,12 @@ export const dynamic = 'force-dynamic';
 const PROJECT_ROOT = process.env.PROJECT_ROOT || path.join(process.cwd(), '..');
 
 /**
- * Find landscape files (.json, .landscape, or .npz) in a directory
- * Returns files in priority order: .json first, then .landscape, then .npz
+ * Find landscape files (.json) in a directory
+ * Returns files: .json
  * Excludes metadata files like .export.meta.json
  */
-function findLandscapeFiles(dir: string): { json?: string; landscape?: string; npz?: string } {
-  const result: { json?: string; landscape?: string; npz?: string } = {};
+function findLandscapeFiles(dir: string): { json?: string; } {
+  const result: { json?: string; } = {};
   
   if (!existsSync(dir)) {
     return result;
@@ -57,10 +51,6 @@ function findLandscapeFiles(dir: string): { json?: string; landscape?: string; n
           
           if (entry.endsWith('.json') && !result.json) {
             result.json = fullPath;
-          } else if (entry.endsWith('.landscape') && !result.landscape) {
-            result.landscape = fullPath;
-          } else if (entry.endsWith('.npz') && !result.npz) {
-            result.npz = fullPath;
           }
         }
       } catch (e) {
@@ -76,19 +66,19 @@ function findLandscapeFiles(dir: string): { json?: string; landscape?: string; n
 
 /**
  * Recursively find landscape files in a directory (depth-first), returning
- * the first match encountered (priority: json > landscape > npz).
+ * the first match encountered (priority: json).
  * Also returns candidate subdirectories that contain landscape files (for UI hints).
  */
 function findLandscapeFilesRecursive(
   dir: string,
   maxDepth: number = 3
-): { found?: { json?: string; landscape?: string; npz?: string }; candidates: string[] } {
+): { found?: { json?: string; }; candidates: string[] } {
   const candidates: string[] = [];
 
   const walk = (d: string, depth: number) => {
     if (depth > maxDepth) return;
     const local = findLandscapeFiles(d);
-    if (local.json || local.landscape || local.npz) {
+    if (local.json) {
       candidates.push(d);
       // If we already found something earlier, don't override.
       return;
@@ -139,27 +129,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Run directory not found: ${runPathInput}` }, { status: 404 });
     }
 
-    // Find landscape files in the run directory (priority: .json > .landscape > .npz)
+    // Find landscape files in the run directory (priority: .json)
     const landscapeFiles = findLandscapeFiles(runPath);
     
-    if (!landscapeFiles.json && !landscapeFiles.landscape && !landscapeFiles.npz) {
+    if (!landscapeFiles.json) {
       // The run directory may be a "container" that has multiple sub-runs (e.g. gravity_examples/*).
       const recursive = findLandscapeFilesRecursive(runPath, 4);
-      if (recursive.found?.json || recursive.found?.landscape || recursive.found?.npz) {
+      if (recursive.found?.json) {
         // Auto-load if there is exactly one subdir with files.
         const f = recursive.found;
         return NextResponse.json({
           success: true,
           id: undefined,
           runPath: runPathInput,
-          dataFile: path.relative(PROJECT_ROOT, (f.json || f.landscape || f.npz) as string),
-          data: JSON.parse(fs.readFileSync((f.json || f.landscape || f.npz) as string, 'utf-8')),
+          dataFile: path.relative(PROJECT_ROOT, (f.json) as string),
+          data: JSON.parse(fs.readFileSync((f.json) as string, 'utf-8')),
           note: 'Loaded from a nested subdirectory because the selected directory contained no landscape files.',
         });
       }
 
       return NextResponse.json({ 
-        error: 'No landscape files (.json, .landscape, or .npz) found in the run directory',
+        error: 'No landscape files (.json) found in the run directory',
         hint:
           recursive.candidates.length > 0
             ? {
@@ -190,51 +180,6 @@ export async function POST(request: NextRequest) {
         .replace(/\bInfinity\b/g, 'null')
         .replace(/\b-Infinity\b/g, 'null');
       data = JSON.parse(sanitizedContent);
-    }
-    // Priority 2: Convert .landscape file to JSON
-    else if (landscapeFiles.landscape) {
-      sourceFile = landscapeFiles.landscape;
-      const relPath = path.relative(PROJECT_ROOT, sourceFile);
-      displayPath = relPath.startsWith('..') ? path.basename(sourceFile) : relPath;
-      
-      try {
-        data = await landscapeToJson(sourceFile);
-      } catch (e: any) {
-        // Handle export-specific errors gracefully
-        if (e instanceof ExportInProgressError) {
-          return NextResponse.json(
-            { 
-              error: 'Export in progress',
-              message: e.message,
-              status: 'exporting',
-              started_at: e.status.started_at,
-              retry_after: 5000, // Suggest retrying after 5 seconds
-            },
-            { status: 202 } // 202 Accepted - request accepted but processing not complete
-          );
-        } else if (e instanceof ExportFailedError) {
-          return NextResponse.json(
-            { 
-              error: 'Export failed',
-              message: e.message,
-              status: 'failed',
-              error_details: e.status.error,
-              failed_at: e.status.failed_at,
-            },
-            { status: 500 }
-          );
-        }
-        // Re-throw other errors
-        throw e;
-      }
-    }
-    // Priority 3: Load .npz file
-    else if (landscapeFiles.npz) {
-      sourceFile = landscapeFiles.npz;
-      const relPath = path.relative(PROJECT_ROOT, sourceFile);
-      displayPath = relPath.startsWith('..') ? path.basename(sourceFile) : relPath;
-      
-      data = await npzToJson(sourceFile);
     } else {
       return NextResponse.json({ 
         error: 'No supported landscape files found' 
@@ -248,6 +193,12 @@ export async function POST(request: NextRequest) {
       trajectory_2: data.trajectory_2 || data.trajectory_data?.traj_2,
       trajectory_3: data.trajectory_3 || data.trajectory_data?.traj_3,
       trajectory_epochs: data.trajectory_epochs || data.trajectory_data?.epochs,
+      trajectory_losses: data.trajectory_losses || data.trajectory_data?.losses,
+      trajectory_val_losses: data.trajectory_val_losses || data.trajectory_data?.val_losses,
+      // Preserve trajectory_data structure if it exists
+      trajectory_data: data.trajectory_data,
+      // Preserve metadata if it exists
+      metadata: data.metadata,
     };
 
     // Validate data before proceeding
@@ -288,9 +239,10 @@ export async function POST(request: NextRequest) {
     
     let id: number | undefined;
     try {
-      // Only import if data has required fields (for .npz files)
+      // Only import if data has required fields
       if (normalizedData.X && normalizedData.Y && normalizedData.loss_grid_2d) {
-        id = await importNpzData(normalizedData, sourceLabel);
+        const filename = path.basename(sourceFile);
+        id = await importNpzData(normalizedData, sourceLabel, sourceFile, undefined, runPathInput, 'run', filename);
       }
     } catch (e: any) {
       // Log but don't fail the request - database import is optional

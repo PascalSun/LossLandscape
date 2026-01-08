@@ -7,6 +7,7 @@ import { useI18n } from './i18n';
 import { useTheme } from './theme';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import MetricChart from './components/MetricChart';
+import Modal from './components/Modal';
 
 // Dynamically import React Three Fiber components to avoid SSR issues
 const LossLandscape3D = dynamic(() => import('./components/LossLandscape3D'), {
@@ -49,7 +50,8 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   
   // Viewer controls
-  const [viewMode, setViewMode] = useState<'3d-surface' | '3d-slice' | '3d-volume' | 'metadata'>('3d-surface');
+  const [viewMode, setViewMode] = useState<'2d' | '3d' | 'metadata'>('2d');
+  const [view3DRenderMode, setView3DRenderMode] = useState<'slice' | 'volume'>('slice');
   const [hoveredView, setHoveredView] = useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
   const buttonRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
@@ -61,12 +63,16 @@ export default function Page() {
   // Draggable card positions
   const [surfaceCardPos, setSurfaceCardPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [sliceCardPos, setSliceCardPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [renderModeCardPos, setRenderModeCardPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isDraggingSurfaceCard, setIsDraggingSurfaceCard] = useState(false);
   const [isDraggingSliceCard, setIsDraggingSliceCard] = useState(false);
+  const [isDraggingRenderModeCard, setIsDraggingRenderModeCard] = useState(false);
   const surfaceCardDragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const sliceCardDragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const renderModeCardDragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const surfaceCardPosStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const sliceCardPosStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const renderModeCardPosStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   
   // Available runs
   const [availableRuns, setAvailableRuns] = useState<string[]>([]);
@@ -78,9 +84,31 @@ export default function Page() {
   // History
   const [history, setHistory] = useState<any[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  
+  // Modal state
+  const [modalState, setModalState] = useState<{
+    isOpen: boolean;
+    type: 'confirm' | 'alert';
+    title: string;
+    message: string;
+    onConfirm?: () => void;
+  }>({
+    isOpen: false,
+    type: 'alert',
+    title: '',
+    message: '',
+  });
   
   // Metadata section expand/collapse state - all sections default to collapsed
   const [expandedMetadataSections, setExpandedMetadataSections] = useState<Set<string>>(new Set());
+
+  // Upload state
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   async function refreshHistory() {
     setHistoryLoading(true);
@@ -108,6 +136,40 @@ export default function Page() {
     } finally {
       setHistoryLoading(false);
     }
+  }
+
+  async function deleteHistoryItem(id: number) {
+    setModalState({
+      isOpen: true,
+      type: 'confirm',
+      title: 'Delete Landscape',
+      message: 'Are you sure you want to delete this landscape? This action cannot be undone.',
+      onConfirm: async () => {
+        setDeletingId(id);
+        try {
+          const res = await fetch(`/api/landscape/${id}`, {
+            method: 'DELETE',
+          });
+
+          const json = await res.json();
+          if (!res.ok) {
+            throw new Error(json?.error || 'Failed to delete');
+          }
+
+          // Refresh history list
+          await refreshHistory();
+        } catch (e: any) {
+          setModalState({
+            isOpen: true,
+            type: 'alert',
+            title: 'Delete Failed',
+            message: `Failed to delete: ${e?.message || String(e)}`,
+          });
+        } finally {
+          setDeletingId(null);
+        }
+      },
+    });
   }
 
   async function refreshRuns() {
@@ -184,9 +246,10 @@ export default function Page() {
       setData(normalizedData);
       // Set view mode based on data
       if (normalizedData.loss_grid_3d) {
-        setViewMode('3d-surface');
+        setViewMode('2d');
       } else {
         setViewMode('2d');
+        setSurfaceMode('2d');
       }
     } catch (e: any) {
       setError(e?.message || String(e));
@@ -222,9 +285,10 @@ export default function Page() {
       setData(normalizedData);
       // Set view mode based on data
       if (normalizedData.loss_grid_3d) {
-        setViewMode('3d-surface');
+        setViewMode('2d');
       } else {
         setViewMode('2d');
+        setSurfaceMode('2d');
       }
     } catch (e: any) {
       setError(e?.message || String(e));
@@ -239,10 +303,10 @@ export default function Page() {
     refreshHistory();
   }, []);
 
-  // Ensure each load defaults to 3D surface
+  // Ensure each load defaults to 2D view
   useEffect(() => {
     if (!data) return;
-    setViewMode('3d-surface');
+    setViewMode('2d');
   }, [data?.loss_grid_3d, data?.loss_grid_2d]);
 
   // Card drag handlers
@@ -258,10 +322,16 @@ export default function Page() {
         const dy = e.clientY - sliceCardDragStart.current.y;
         setSliceCardPos({ x: sliceCardPosStart.current.x + dx, y: sliceCardPosStart.current.y + dy });
       }
+      if (isDraggingRenderModeCard) {
+        const dx = e.clientX - renderModeCardDragStart.current.x;
+        const dy = e.clientY - renderModeCardDragStart.current.y;
+        setRenderModeCardPos({ x: renderModeCardPosStart.current.x + dx, y: renderModeCardPosStart.current.y + dy });
+      }
     };
     const onUp = () => {
       if (isDraggingSurfaceCard) setIsDraggingSurfaceCard(false);
       if (isDraggingSliceCard) setIsDraggingSliceCard(false);
+      if (isDraggingRenderModeCard) setIsDraggingRenderModeCard(false);
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -269,7 +339,7 @@ export default function Page() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [isDraggingSurfaceCard, isDraggingSliceCard]);
+  }, [isDraggingSurfaceCard, isDraggingSliceCard, isDraggingRenderModeCard]);
 
   const startSurfaceCardDrag = (e: React.MouseEvent) => {
     setIsDraggingSurfaceCard(true);
@@ -282,6 +352,13 @@ export default function Page() {
     setIsDraggingSliceCard(true);
     sliceCardDragStart.current = { x: e.clientX, y: e.clientY };
     sliceCardPosStart.current = sliceCardPos;
+    e.preventDefault();
+  };
+
+  const startRenderModeCardDrag = (e: React.MouseEvent) => {
+    setIsDraggingRenderModeCard(true);
+    renderModeCardDragStart.current = { x: e.clientX, y: e.clientY };
+    renderModeCardPosStart.current = renderModeCardPos;
     e.preventDefault();
   };
 
@@ -401,61 +478,470 @@ export default function Page() {
             No history found
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {history.map((h: any) => (
-              <div
-                key={h.id}
-                style={{
-                  padding: '12px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  background: 'var(--bg-history-item)',
-                }}
-              >
-                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
-                  ID: {h.id}
-                </div>
-                {h.run_dir && (
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>
-                    Run: {h.run_dir}
-                  </div>
-                )}
-                {h.mode && (
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>
-                    Mode: {h.mode}
-                  </div>
-                )}
-                <button
-                  className="btn btn-sm btn-primary"
-                  onClick={() => {
-                    if (h.run_dir) {
-                      loadFromRun(h.run_dir);
-                    } else if (h.id) {
-                      loadFromId(h.id);
-                    }
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {history.map((h: any) => {
+              const getSourceIcon = (source?: string) => {
+                switch (source) {
+                  case 'upload': return '📤';
+                  case 'run': return '📁';
+                  case 'scan': return '🔍';
+                  case 'import': return '📥';
+                  case 'generate': return '⚡';
+                  default: return '📊';
+                }
+              };
+
+              const getSourceColor = (source?: string) => {
+                switch (source) {
+                  case 'upload': return '#3b82f6';
+                  case 'run': return '#10b981';
+                  case 'scan': return '#8b5cf6';
+                  case 'import': return '#06b6d4';
+                  case 'generate': return '#f59e0b';
+                  default: return 'var(--text-muted)';
+                }
+              };
+
+              return (
+                <div
+                  key={h.id}
+                  style={{
+                    padding: '16px',
+                    borderRadius: 12,
+                    border: '1px solid var(--border)',
+                    background: 'var(--bg-history-item)',
+                    transition: 'all 0.2s ease',
+                    boxShadow: 'var(--shadow)',
+                    position: 'relative',
                   }}
-                  disabled={loading || (!h.run_dir && !h.id)}
-                  style={{ fontSize: 13, padding: '4px 12px', width: '100%' }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--accent)';
+                    e.currentTarget.style.background = 'var(--bg-history-item-hover)';
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = 'var(--shadow-lg)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = 'var(--border)';
+                    e.currentTarget.style.background = 'var(--bg-history-item)';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'var(--shadow)';
+                  }}
                 >
-                  Load
-                </button>
-              </div>
-            ))}
+                  {/* Header with ID and Delete button */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 8,
+                        background: 'var(--accent-gradient)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 16,
+                        fontWeight: 700,
+                        color: '#fff',
+                        flexShrink: 0,
+                      }}>
+                        #{h.id}
+                      </div>
+                      {h.import_source && (
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          padding: '4px 10px',
+                          borderRadius: 6,
+                          background: `${getSourceColor(h.import_source)}15`,
+                          border: `1px solid ${getSourceColor(h.import_source)}40`,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: getSourceColor(h.import_source),
+                        }}>
+                          <span>{getSourceIcon(h.import_source)}</span>
+                          <span style={{ textTransform: 'capitalize' }}>{h.import_source}</span>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteHistoryItem(h.id);
+                      }}
+                      disabled={deletingId === h.id}
+                      style={{
+                        width: 28,
+                        height: 28,
+                        padding: 0,
+                        borderRadius: 6,
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        background: deletingId === h.id 
+                          ? 'rgba(239, 68, 68, 0.2)' 
+                          : 'transparent',
+                        color: '#ef4444',
+                        fontSize: 16,
+                        cursor: deletingId === h.id ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.2s ease',
+                        flexShrink: 0,
+                      }}
+                      onMouseEnter={(e) => {
+                        if (deletingId !== h.id) {
+                          e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)';
+                          e.currentTarget.style.borderColor = '#ef4444';
+                          e.currentTarget.style.transform = 'scale(1.1)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (deletingId !== h.id) {
+                          e.currentTarget.style.background = 'transparent';
+                          e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                          e.currentTarget.style.transform = 'scale(1)';
+                        }
+                      }}
+                      title="Delete"
+                    >
+                      {deletingId === h.id ? (
+                        <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                      ) : (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 6h18" />
+                          <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                          <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                          <line x1="10" y1="11" x2="10" y2="17" />
+                          <line x1="14" y1="11" x2="14" y2="17" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Info section */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+                    {h.run_dir && (
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                        <span style={{ fontSize: 14, opacity: 0.7, flexShrink: 0, marginTop: 2 }}>📁</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            Run Directory
+                          </div>
+                          <div style={{ fontSize: 13, color: 'var(--text-primary)', wordBreak: 'break-all' }}>
+                            {h.run_dir}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {h.import_filename && (
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                        <span style={{ fontSize: 14, opacity: 0.7, flexShrink: 0, marginTop: 2 }}>📄</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            File
+                          </div>
+                          <div style={{ fontSize: 13, color: 'var(--text-primary)', wordBreak: 'break-all' }}>
+                            {h.import_filename}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {(h.imported_at || h.created_at) && (
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                        <span style={{ fontSize: 14, opacity: 0.7, flexShrink: 0, marginTop: 2 }}>🕒</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            {h.imported_at ? 'Imported' : 'Created'}
+                          </div>
+                          <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>
+                            {h.imported_at 
+                              ? new Date(h.imported_at).toLocaleString(undefined, { 
+                                  year: 'numeric', 
+                                  month: 'short', 
+                                  day: 'numeric', 
+                                  hour: '2-digit', 
+                                  minute: '2-digit' 
+                                })
+                              : new Date(h.created_at).toLocaleString(undefined, { 
+                                  year: 'numeric', 
+                                  month: 'short', 
+                                  day: 'numeric', 
+                                  hour: '2-digit', 
+                                  minute: '2-digit' 
+                                })
+                            }
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Load button */}
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={() => {
+                      if (h.run_dir) {
+                        loadFromRun(h.run_dir);
+                      } else if (h.id) {
+                        loadFromId(h.id);
+                      }
+                    }}
+                    disabled={loading || (!h.run_dir && !h.id)}
+                    style={{ 
+                      fontSize: 13, 
+                      padding: '8px 16px', 
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    Load
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
     );
   };
 
+  function handleFileSelect(file: File) {
+    const fileName = file.name.toLowerCase();
+    const isJson = fileName.endsWith('.json');
+
+    if (!isJson) {
+      setUploadError('File must be a .json file');
+      return;
+    }
+
+    setUploadFile(file);
+    setUploadError(null);
+    setUploadSuccess(false);
+  }
+
+  async function handleUpload() {
+    if (!uploadFile) {
+      setUploadError('Please select a file first');
+      return;
+    }
+
+    setUploading(true);
+    setUploadError(null);
+    setUploadSuccess(false);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', uploadFile);
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        let errorMessage = json?.error || 'Upload failed';
+        if (json?.validationErrors && Array.isArray(json.validationErrors)) {
+          errorMessage += ': ' + json.validationErrors.join('; ');
+        }
+        throw new Error(errorMessage);
+      }
+
+      setUploadSuccess(true);
+      setUploadFile(null);
+      
+      // Refresh history to show the new import
+      await refreshHistory();
+
+      // Optionally load the uploaded data
+      if (json.id) {
+        setTimeout(() => {
+          loadFromId(json.id);
+        }, 500);
+      }
+    } catch (e: any) {
+      setUploadError(e?.message || String(e));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!uploading) {
+      setIsDragging(true);
+    }
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    if (uploading) {
+      return;
+    }
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFileSelect(files[0]);
+    }
+  }
+
   const renderUploadTab = () => {
     return (
       <div>
         <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.7 }}>
-          Upload a landscape file (.json, .landscape, or .npz)
+          Upload a landscape JSON file. The file will be validated before import.
         </div>
-        <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-          Upload functionality coming soon...
+
+        {/* Drag and drop area */}
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          style={{
+            padding: '40px 20px',
+            borderRadius: 12,
+            border: `2px dashed ${isDragging ? 'var(--accent)' : 'var(--border)'}`,
+            background: isDragging
+              ? 'rgba(249, 115, 22, 0.1)'
+              : uploadFile
+              ? 'var(--bg-history-item)'
+              : 'var(--bg-input)',
+            textAlign: 'center',
+            cursor: uploading ? 'not-allowed' : 'pointer',
+            transition: 'all 0.2s ease',
+            marginBottom: 16,
+            position: 'relative',
+          }}
+          onClick={() => {
+            if (!uploading) {
+              document.getElementById('file-input')?.click();
+            }
+          }}
+        >
+          <input
+            id="file-input"
+            type="file"
+            accept=".json"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                handleFileSelect(file);
+              }
+            }}
+            disabled={uploading}
+            style={{ display: 'none' }}
+          />
+          {uploadFile ? (
+            <div>
+              <div style={{ fontSize: 16, marginBottom: 8, color: 'var(--text-primary)' }}>
+                📄 {uploadFile.name}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Size: {(uploadFile.size / 1024 / 1024).toFixed(2)} MB
+              </div>
+              <div
+                style={{
+                  marginTop: 12,
+                  fontSize: 12,
+                  color: 'var(--text-muted)',
+                  textDecoration: 'underline',
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setUploadFile(null);
+                  setUploadError(null);
+                  setUploadSuccess(false);
+                }}
+              >
+                Click to change file
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>📤</div>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: 'var(--text-primary)' }}>
+                {isDragging ? 'Drop file here' : 'Drag & drop file here'}
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                or click to browse
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
+                Supports .json files only
+              </div>
+            </div>
+          )}
         </div>
+
+
+        {uploadError && (
+          <div
+            style={{
+              padding: '12px',
+              borderRadius: 8,
+              border: '1px solid #ef4444',
+              background: 'rgba(239, 68, 68, 0.1)',
+              color: '#ef4444',
+              fontSize: 13,
+              marginBottom: 16,
+            }}
+          >
+            {uploadError}
+          </div>
+        )}
+
+        {uploadSuccess && (
+          <div
+            style={{
+              padding: '12px',
+              borderRadius: 8,
+              border: '1px solid #10b981',
+              background: 'rgba(16, 185, 129, 0.1)',
+              color: '#10b981',
+              fontSize: 13,
+              marginBottom: 16,
+            }}
+          >
+            ✓ File uploaded and imported successfully!
+          </div>
+        )}
+
+        <button
+          className="btn btn-primary"
+          onClick={handleUpload}
+          disabled={!uploadFile || uploading}
+          style={{
+            width: '100%',
+            opacity: (!uploadFile || uploading) ? 0.6 : 1,
+            cursor: (!uploadFile || uploading) ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {uploading ? (
+            <>
+              <span className="spinner" style={{ width: 14, height: 14, marginRight: 8 }} />
+              Uploading and importing...
+            </>
+          ) : (
+            'Upload & Import'
+          )}
+        </button>
       </div>
     );
   };
@@ -1305,19 +1791,18 @@ export default function Page() {
     if (!data) return null;
     
     // Build available view modes based on data
-    // Order: Surface (2D/3D toggle) -> Slice (2D/3D toggle) -> 3D volume -> Metadata
+    // Order: 2D -> 3D (with render mode selector) -> Metadata
     const availableViews: Array<{key: typeof viewMode, label: string, requires3D: boolean, desc: string}> = [];
     
     if (data.loss_grid_2d) {
       availableViews.push(
-        { key: '3d-surface', label: t.viewSurface, requires3D: false, desc: `${t.view2DDesc} / ${t.view3DSurfaceDesc}` }
+        { key: '2d', label: t.viewSurface, requires3D: false, desc: `${t.view2DDesc} / ${t.view3DSurfaceDesc}` }
       );
     }
     
     if (data.loss_grid_3d) {
       availableViews.push(
-        { key: '3d-slice', label: t.viewSlice, requires3D: true, desc: t.view3DSliceDesc },
-        { key: '3d-volume', label: t.viewVolume, requires3D: true, desc: t.view3DVolumeDesc }
+        { key: '3d', label: t.viewSlice, requires3D: true, desc: view3DRenderMode === 'slice' ? t.view3DSliceDesc : t.view3DVolumeDesc }
       );
     }
     
@@ -1337,7 +1822,15 @@ export default function Page() {
                 <Tooltip.Trigger asChild>
                   <button
                     className={`viewModeTab ${viewMode === v.key ? 'active' : ''}`}
-                    onClick={() => setViewMode(v.key)}
+                    onClick={() => {
+                      setViewMode(v.key);
+                      if (v.key === '3d' && view3DRenderMode === 'volume') {
+                        // Keep current render mode when switching to 3D
+                      } else if (v.key === '3d') {
+                        // Default to slice when first entering 3D mode
+                        setView3DRenderMode('slice');
+                      }
+                    }}
                   >
                     {v.label}
                   </button>
@@ -1632,11 +2125,87 @@ export default function Page() {
           })()}
           
           {/* Right side: Main viewer */}
-          <div className="viewerCanvas" style={{ flex: 1, minWidth: 0 }}>
+          <div className="viewerCanvas" style={{ flex: 1, minWidth: 0, position: 'relative' }}>
           {loading && (
             <div className="loadingOverlay">
               <div className="spinner" />
               <div style={{ fontSize: 14, fontWeight: 500 }}>{t.loadingOverlay}</div>
+            </div>
+          )}
+
+          {/* 3D Render Mode Selector - Top Left, Draggable */}
+          {viewMode === '3d' && data?.loss_grid_3d && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 16,
+                left: 16,
+                transform: `translate(${renderModeCardPos.x}px, ${renderModeCardPos.y}px)`,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+                padding: '14px 16px',
+                borderRadius: 16,
+                border: `1px solid ${isDark ? 'rgba(255,255,255,0.22)' : 'rgba(15,23,42,0.12)'}`,
+                background: isDark ? 'rgba(0,0,0,0.72)' : 'rgba(255,255,255,0.86)',
+                backdropFilter: 'blur(12px)',
+                color: isDark ? 'rgba(255,255,255,0.95)' : '#0f172a',
+                fontSize: 13,
+                boxShadow: isDark ? '0 12px 40px rgba(0,0,0,0.5)' : '0 12px 40px rgba(15,23,42,0.12)',
+                pointerEvents: 'auto',
+                zIndex: 20,
+                minWidth: 220,
+                cursor: isDraggingRenderModeCard ? 'grabbing' : 'grab',
+              }}
+              onMouseDown={startRenderModeCardDrag}
+            >
+              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 2, letterSpacing: '0.02em' }}>
+                {t.view3DRenderMode}
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setView3DRenderMode('slice');
+                  }}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: 8,
+                    border: view3DRenderMode === 'slice' ? '2px solid var(--accent)' : `1px solid ${isDark ? 'rgba(255,255,255,0.22)' : 'rgba(15,23,42,0.12)'}`,
+                    background: view3DRenderMode === 'slice' ? 'rgba(249,115,22,0.15)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)'),
+                    color: isDark ? 'rgba(255,255,255,0.95)' : '#0f172a',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    flex: 1,
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  {t.view3DSlice}
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setView3DRenderMode('volume');
+                  }}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: 8,
+                    border: view3DRenderMode === 'volume' ? '2px solid var(--accent)' : `1px solid ${isDark ? 'rgba(255,255,255,0.22)' : 'rgba(15,23,42,0.12)'}`,
+                    background: view3DRenderMode === 'volume' ? 'rgba(249,115,22,0.15)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)'),
+                    color: isDark ? 'rgba(255,255,255,0.95)' : '#0f172a',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    flex: 1,
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  {t.view3DVolume}
+                </button>
+              </div>
             </div>
           )}
 
@@ -1662,7 +2231,7 @@ export default function Page() {
             )
           ) : data?.X?.length && (data?.loss_grid_2d?.length || data?.loss_grid_3d?.length) ? (
              // Render based on viewMode instead of mode
-             viewMode === '3d-surface' ? (
+             viewMode === '2d' ? (
                 surfaceMode === '2d' ? (
                   <LossLandscape2D
                     X={data.X}
@@ -1705,7 +2274,7 @@ export default function Page() {
                     }
                   />
                 )
-            ) : viewMode === '3d-slice' && data.loss_grid_3d ? (
+            ) : viewMode === '3d' && view3DRenderMode === 'slice' && data.loss_grid_3d ? (
                 sliceMode === '2d'
                   ? (
                     sliceAxis === 'gamma'
@@ -2000,7 +2569,7 @@ export default function Page() {
                         />
                       )
                   )
-            ) : viewMode === '3d-volume' && data.loss_grid_3d ? (
+            ) : viewMode === '3d' && view3DRenderMode === 'volume' && data.loss_grid_3d ? (
                 <LossVolumeRender3D
                   X={(() => {
                     const { xVals, yVals } = volumeAxes;
@@ -2058,7 +2627,7 @@ export default function Page() {
           )}
 
           {/* Surface view 2D/3D toggle, bottom-right */}
-          {viewMode === '3d-surface' && (
+          {viewMode === '2d' && (
             <div
               style={{
                 position: 'absolute',
@@ -2078,7 +2647,7 @@ export default function Page() {
                 boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
                 pointerEvents: 'auto',
                 zIndex: 20,
-                width: 180,
+                width: 300,
                 minHeight: 80, // keep height stable when toggling 2D/3D
                 cursor: isDraggingSurfaceCard ? 'grabbing' : 'grab',
               }}
@@ -2124,20 +2693,20 @@ export default function Page() {
             </div>
           )}
 
-          {viewMode === '3d-slice' && (
+          {viewMode === '3d' && view3DRenderMode === 'slice' && (
             <>
               {/* Right-side axis + mode controls */}
               <div
                 style={{
                   position: 'absolute',
                   right: 20,
-                  bottom: 80, // sit just above the bottom slice slider
+                  bottom: 20,
                   transform: `translate(${sliceCardPos.x}px, ${sliceCardPos.y}px)`,
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 10,
-                  padding: '10px 12px',
-                  borderRadius: 14,
+                  gap: 12,
+                  padding: '14px 16px',
+                  borderRadius: 16,
                   border: '1px solid var(--border)',
                   background: 'var(--bg-glass)',
                   backdropFilter: 'blur(10px)',
@@ -2146,21 +2715,13 @@ export default function Page() {
                   boxShadow: getThemeColor('0 2px 12px rgba(59, 130, 246, 0.08)', '0 2px 12px rgba(0, 0, 0, 0.25)'),
                   pointerEvents: 'auto',
                   zIndex: 20,
-                  width: 180,
+                  width: 300,
                   cursor: isDraggingSliceCard ? 'grabbing' : 'grab',
                 }}
                 onMouseDown={startSliceCardDrag}
               >
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{t.viewSlice}</div>
-                <div style={{ opacity: 0.8, fontSize: 12, fontFamily: 'monospace', marginBottom: 6 }}>
-                  {sliceAxis === 'gamma'
-                    ? (sliceMeta.zVals[sliceIndex] !== undefined
-                        ? `${t.gamma} = ${sliceMeta.zVals[sliceIndex].toFixed(3)}`
-                        : `${t.gamma} index = ${sliceIndex}`)
-                    : sliceAxis === 'alpha'
-                      ? `α index = ${sliceIndex}`
-                      : `β index = ${sliceIndex}`}
-                </div>
+                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{t.viewSlice} - {view3DRenderMode === 'slice' ? t.view3DSlice : t.view3DVolume}</div>
+                
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button
                     type="button"
@@ -2197,7 +2758,8 @@ export default function Page() {
                     3D
                   </button>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8, fontSize: 12, opacity: 0.85 }}>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, opacity: 0.85 }}>
                   <span style={{ fontWeight: 600 }}>Axis</span>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <button
@@ -2209,9 +2771,9 @@ export default function Page() {
                         border: sliceAxis === 'gamma' ? '2px solid #6ee7b7' : '1px solid var(--border)',
                       background: sliceAxis === 'gamma' ? 'rgba(110,231,183,0.15)' : 'var(--bg-lang-toggle)',
                       color: 'var(--text-primary)',
-                        fontSize: 11,
-                        fontWeight: 600,
-                        cursor: 'pointer',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      cursor: 'pointer',
                       }}
                     >
                       γ
@@ -2250,60 +2812,62 @@ export default function Page() {
                     </button>
                   </div>
                 </div>
-              </div>
-
-              {/* Bottom slice index slider */}
-              <div
-                style={{
-                  position: 'absolute',
-                  left: 20,
-                  right: 20,
-                  bottom: 20,
-                  display: 'flex',
-                  gap: 16,
-                  alignItems: 'center',
-                  padding: '10px 14px',
-                  borderRadius: 16,
-                  border: '1px solid var(--border)',
-                  background: 'var(--bg-glass)',
-                  backdropFilter: 'blur(10px)',
-                  color: 'var(--text-primary)',
-                  fontSize: 12,
-                    boxShadow: getThemeColor('0 2px 12px rgba(59, 130, 246, 0.08)', '0 2px 12px rgba(0, 0, 0, 0.25)'),
-                    pointerEvents: 'auto',
-                    zIndex: 20,
-                }}
-              >
-                <div style={{ minWidth: 90, fontWeight: 700, fontSize: 12 }}>Slice:</div>
-                <input
-                  type="range"
-                  min={0}
-                  max={sliceMeta.nz - 1}
-                  step={1}
-                  value={Math.min(sliceIndex, sliceMeta.nz - 1)}
-                  onChange={(e) => setSliceIndex(parseInt(e.target.value, 10))}
-                  style={{
-                    flex: 1,
-                    accentColor: '#f97316',
-                  }}
-                />
-                <div
-                  style={{
-                    minWidth: 80,
-                    textAlign: 'right',
-                    opacity: 0.9,
-                    fontFamily: 'monospace',
-                    fontSize: 12,
-                  }}
-                >
-                  {sliceIndex} / {sliceMeta.nz - 1}
+                
+                <div style={{ height: 1, background: 'var(--border)', margin: '2px 0' }} />
+                
+                <div onMouseDown={(e) => e.stopPropagation()}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 11, opacity: 0.8, fontFamily: 'monospace' }}>
+                    <span style={{ fontWeight: 600 }}>Slice Index</span>
+                    <span>{sliceIndex} / {sliceMeta.nz - 1}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={sliceMeta.nz - 1}
+                    step={1}
+                    value={Math.min(sliceIndex, sliceMeta.nz - 1)}
+                    onChange={(e) => setSliceIndex(parseInt(e.target.value, 10))}
+                    style={{
+                      width: '100%',
+                      accentColor: '#f97316',
+                      cursor: 'pointer',
+                      marginBottom: 4,
+                    }}
+                  />
+                  <div style={{ fontSize: 10, opacity: 0.7, fontFamily: 'monospace', textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {sliceAxis === 'gamma'
+                      ? (sliceMeta.zVals[sliceIndex] !== undefined
+                          ? `${t.gamma} = ${sliceMeta.zVals[sliceIndex].toFixed(3)}`
+                          : `${t.gamma} idx=${sliceIndex}`)
+                      : sliceAxis === 'alpha'
+                        ? `α idx=${sliceIndex}`
+                        : `β idx=${sliceIndex}`}
+                  </div>
                 </div>
               </div>
+
             </>
           )}
           </div>
         </div>
       </div>
+      
+      {/* Modal for confirmations and alerts */}
+      <Modal
+        isOpen={modalState.isOpen}
+        onClose={() => setModalState({ ...modalState, isOpen: false })}
+        type={modalState.type}
+        title={modalState.title}
+        message={modalState.message}
+        confirmText={modalState.type === 'confirm' ? 'Delete' : 'OK'}
+        cancelText="Cancel"
+        onConfirm={modalState.onConfirm}
+        confirmButtonStyle={
+          modalState.type === 'confirm'
+            ? { background: '#ef4444' }
+            : undefined
+        }
+      />
     </div>
   );
 }

@@ -5,8 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateLossLandscape, GenerateLandscapeOptions } from '@/lib/python-bridge';
 import { saveLossLandscape } from '@/lib/db';
-import { npzToJson } from '@/lib/npz';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 
 export async function POST(request: NextRequest) {
@@ -35,16 +34,24 @@ export async function POST(request: NextRequest) {
 
     // Load the generated data
     if (result.dataFile) {
-      // Load .npz file and convert to JSON
-      const data = await npzToJson(result.dataFile);
+      // Load JSON file
+      const content = readFileSync(result.dataFile, 'utf-8');
+      // Sanitize NaN/Infinity
+      const sanitized = content
+        .replace(/\bNaN\b/g, 'null')
+        .replace(/\bInfinity\b/g, 'null')
+        .replace(/\b-Infinity\b/g, 'null');
+      const data = JSON.parse(sanitized);
       
       // Transform trajectory data from npz format to expected format
-      const trajectory_data = (data.trajectory_1 && data.trajectory_2) ? {
+      // Note: If Python now generates standard JSON format, this might be redundant or require adjustment
+      // Checks for both snake_case and camelCase or flattened properties
+      const trajectory_data = data.trajectory_data || ((data.trajectory_1 && data.trajectory_2) ? {
         traj_1: data.trajectory_1,
         traj_2: data.trajectory_2,
         traj_3: data.trajectory_3,
         epochs: data.trajectory_epochs || [],
-      } : undefined;
+      } : undefined);
       
       // Save to database
       // Ensure run_dir is a string (it might be a Path object or undefined)
@@ -100,6 +107,8 @@ export async function POST(request: NextRequest) {
           loss_grid_3d: data.loss_grid_3d,
           baseline_loss: data.baseline_loss,
           trajectory_data,
+          import_source: 'generate',
+          imported_at: new Date(),
           skipDuplicateCheck: true, // Always create new record for generate API
         });
         console.log('[generate/route] Saved to database with id:', id);

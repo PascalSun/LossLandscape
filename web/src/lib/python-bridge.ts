@@ -131,9 +131,4 @@ export async function generateLossLandscape(
   }
 }
 
-export async function loadLandscapeData(dataFile: string): Promise<any> {
-  // Load the .npz file - we'll need to use Python to convert it to JSON
-  // For now, return the file path and let the API handle conversion
-  return { file: dataFile };
-}
 

@@ -174,9 +174,34 @@ def train_model(model, train_loader, val_loader, optimizer, step_loss_fn, device
     Returns:
         dict with training statistics
     """
+    def eval_epoch_loss(data_loader):
+        """
+        Evaluate loss on a full dataloader using *fixed* weights.
+        This is the quantity that should be comparable to loss-landscape evaluation
+        when the landscape also uses the same dataloader + same loss definition.
+        """
+        model.eval()
+        total = 0.0
+        n = 0
+        with torch.no_grad():
+            for inputs, targets in data_loader:
+                inputs = inputs.to(device)
+                targets = targets.to(device)
+                loss = step_loss_fn(model, inputs, targets)
+                total += float(loss.item())
+                n += 1
+        model.train()
+        return (total / n) if n > 0 else 0.0
+
     model.train()
     training_stats = {
+        # "loss_history" is what we export/plot as "Train Loss".
+        # We make it an epoch-end evaluation loss on the full train_loader so it is directly comparable
+        # to loss-landscape evaluation on the same train_loader.
         "loss_history": [],
+        # Keep the traditional "running" epoch loss (average of per-batch training losses during updates)
+        # for debugging/interpretation.
+        "train_running_loss_history": [],
         "val_loss_history": [],
         "learning_rate_history": [],
         "final_loss": None,
@@ -204,49 +229,48 @@ def train_model(model, train_loader, val_loader, optimizer, step_loss_fn, device
         if scheduler is not None:
             scheduler.step()
 
-        avg_loss = total_loss / num_batches if num_batches > 0 else 0.0
+        avg_loss_running = total_loss / num_batches if num_batches > 0 else 0.0
         current_lr = optimizer.param_groups[0]['lr']
+
+        # Epoch-end train loss with fixed weights (full train_loader).
+        # This is the number we want to compare against the landscape.
+        train_eval_loss = eval_epoch_loss(train_loader)
         
         # Validation phase
         val_loss = None
         if val_loader is not None:
-            model.eval()
-            total_val_loss = 0.0
-            num_val_batches = 0
-            with torch.no_grad():
-                for inputs, targets in val_loader:
-                    inputs = inputs.to(device)
-                    targets = targets.to(device)
-                    val_loss_batch = step_loss_fn(model, inputs, targets)
-                    total_val_loss += val_loss_batch.item()
-                    num_val_batches += 1
-            val_loss = total_val_loss / num_val_batches if num_val_batches > 0 else None
-            model.train()
+            val_loss = eval_epoch_loss(val_loader)
         
         # Record statistics
-        training_stats["loss_history"].append(avg_loss)
+        training_stats["loss_history"].append(train_eval_loss)
+        training_stats["train_running_loss_history"].append(avg_loss_running)
         training_stats["learning_rate_history"].append(current_lr)
         if val_loss is not None:
             training_stats["val_loss_history"].append(val_loss)
         
         if epoch == 0:
-            training_stats["initial_loss"] = avg_loss
+            training_stats["initial_loss"] = train_eval_loss
         
-        if avg_loss < training_stats["min_loss"]:
-            training_stats["min_loss"] = avg_loss
+        if train_eval_loss < training_stats["min_loss"]:
+            training_stats["min_loss"] = train_eval_loss
             training_stats["min_loss_epoch"] = epoch
         
-        training_stats["final_loss"] = avg_loss
+        training_stats["final_loss"] = train_eval_loss
         if val_loss is not None:
             training_stats["final_val_loss"] = val_loss
 
         # Record trajectory position + true (epoch-average) train loss and val loss for comparison in the UI.
         if explorer is not None:
-            explorer.log_position(epoch=epoch, verbose=False, loss=avg_loss, val_loss=val_loss)
+            explorer.log_position(epoch=epoch, verbose=False, loss=train_eval_loss, val_loss=val_loss)
         
         if (epoch + 1) % 10 == 0:
             val_str = f", Val Loss: {val_loss:.6f}" if val_loss is not None else ""
-            logger.info(f"  Epoch {epoch+1}/{num_epochs}, Train Loss: {avg_loss:.6f}{val_str}, LR: {current_lr:.6f}")
+            logger.info(
+                f"  Epoch {epoch+1}/{num_epochs}, "
+                f"Train Loss (epoch-end eval): {train_eval_loss:.6f}, "
+                f"Train Loss (running): {avg_loss_running:.6f}"
+                f"{val_str}, LR: {current_lr:.6f}"
+            )
     
     return training_stats
 
@@ -337,9 +361,13 @@ def compute_pca_directions(trajectory_weights, device, model):
     # 计算投影范围以确定 range_scale
     # 投影 = centered_data @ Vh.T
     # 我们只关心前3个归一化后的方向的投影
-    # Proj coordinates: P = W @ D_norm.T
-    # This matches Explorer.build_trajectory logic implicitly (if mode='fixed')
-    proj = torch.matmul(centered_data, torch.stack(norm_dirs).T) # (N, 3)
+    # Proj coordinates: P = <W, d> / <d, d> for each direction d.
+    # IMPORTANT: Explorer uses filterwise-normalized directions which are generally NOT unit vectors,
+    # so we must divide by ||d||^2 to get true projection coefficients. This matches
+    # Explorer.build_trajectory's coordinate convention.
+    D = torch.stack(norm_dirs)  # (3, D)
+    denom = (D * D).sum(dim=1).clamp_min(1e-12)  # (3,)
+    proj = torch.matmul(centered_data, D.T) / denom  # (N, 3)
     
     # 找到最大的绝对坐标值
     max_coord = proj.abs().max().item()
@@ -467,7 +495,9 @@ def generate_landscape(model, data_loader, loss_fn, loss_name, output_dir, devic
         device=device,
         storage=storage,
         custom_loss_fn=custom_loss_fn,
-        model_mode='eval'
+        model_mode='eval',
+        # More accurate (but slower): evaluate full loader instead of only a few batches.
+        max_batches=None,
     ) as explorer:
         
         # 1. 恢复轨迹数据（用于 build_trajectory）
@@ -571,6 +601,14 @@ def generate_landscape(model, data_loader, loss_fn, loss_name, output_dir, devic
     storage.export_for_frontend(json_path)
     storage.close()
     
+    # Remove intermediate .landscape file as we only need the JSON output
+    if os.path.exists(landscape_path):
+        try:
+            os.remove(landscape_path)
+            logger.info(f"Removed intermediate file: {landscape_path}")
+        except OSError as e:
+            logger.warning(f"Error removing intermediate file {landscape_path}: {e}")
+    
     return result_2d, result_3d, json_path
 
 
@@ -586,6 +624,9 @@ def main():
     nu_val = 0.05
     train_dataset = BurgersEquationDataset(num_samples=2000, L=2.0, nu=nu_val)
     train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=0)
+    # Use a deterministic loader for landscape evaluation to avoid introducing visual "noise"
+    # from shuffled mini-batch order (especially if max_batches is limited in other configs).
+    landscape_train_loader = DataLoader(train_dataset, batch_size=64, shuffle=False, num_workers=0)
     eval_dataset = BurgersEquationDataset(num_samples=500, L=2.0, nu=nu_val)
     eval_loader = DataLoader(eval_dataset, batch_size=64, shuffle=False, num_workers=0)
     
@@ -715,7 +756,9 @@ def main():
     os.makedirs(mse_with_dir, exist_ok=True)
     generate_landscape(
         model=mse_trained_model,
-        data_loader=eval_loader,
+        # Use deterministic train loader so Train Loss (epoch-end eval) and Landscape Loss are comparable
+        # without extra noise from batch shuffling.
+        data_loader=landscape_train_loader,
         loss_fn=mse_loss_fn,
         loss_name="mse",
         output_dir=mse_with_dir,
@@ -738,7 +781,7 @@ def main():
     os.makedirs(mse_no_dir, exist_ok=True)
     generate_landscape(
         model=mse_no_model,
-        data_loader=eval_loader,
+        data_loader=landscape_train_loader,
         loss_fn=mse_loss_fn,
         loss_name="mse",
         output_dir=mse_no_dir,
@@ -759,7 +802,7 @@ def main():
     os.makedirs(phy_with_dir, exist_ok=True)
     generate_landscape(
         model=phy_trained_model,
-        data_loader=eval_loader,
+        data_loader=landscape_train_loader,
         loss_fn=mse_loss_fn,
         loss_name="physics",
         output_dir=phy_with_dir,
@@ -782,7 +825,7 @@ def main():
     os.makedirs(phy_no_dir, exist_ok=True)
     generate_landscape(
         model=phy_no_model,
-        data_loader=eval_loader,
+        data_loader=landscape_train_loader,
         loss_fn=mse_loss_fn,
         loss_name="physics",
         output_dir=phy_no_dir,

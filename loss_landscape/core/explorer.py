@@ -73,6 +73,7 @@ class Explorer:
         model_mode: str = 'eval',
         pre_batch_hook: Optional[Callable[[Any], Any]] = None,
         post_batch_hook: Optional[Callable[[torch.Tensor, Any, torch.Tensor], torch.Tensor]] = None,
+        max_batches: Optional[int] = 10,
     ):
         """
         初始化Explorer。
@@ -106,6 +107,9 @@ class Explorer:
         self.model_mode = model_mode
         self.pre_batch_hook = pre_batch_hook
         self.post_batch_hook = post_batch_hook
+        # Limit evaluation batches for speed when building landscapes/volumes.
+        # Set to None to evaluate the entire loader (more accurate, slower).
+        self.max_batches = max_batches
         
         # 备份原始权重
         self._original_state = None
@@ -373,8 +377,8 @@ class Explorer:
                         loss = self.custom_loss_fn(self.model, inputs, targets)
                         total_loss += loss.item() if isinstance(loss, torch.Tensor) else float(loss)
                         num_batches += 1
-                        
-                        if num_batches >= 10:
+
+                        if self.max_batches is not None and num_batches >= self.max_batches:
                             break
                 
                 return total_loss / num_batches if num_batches > 0 else 0.0
@@ -442,7 +446,7 @@ class Explorer:
                     num_batches += 1
                     
                     # 限制批次数以提高速度（可选）
-                    if num_batches >= 10:  # 默认最多10个batch
+                    if self.max_batches is not None and num_batches >= self.max_batches:
                         break
             
             data_loss = total_loss / num_batches if num_batches > 0 else 0.0
@@ -500,6 +504,13 @@ class Explorer:
         # 生成网格
         alpha_range = np.linspace(-range_scale, range_scale, grid_size)
         beta_range = np.linspace(-range_scale, range_scale, grid_size)
+        # Ensure 0 is sampled (helps keep a near-baseline region even when grid_size is even).
+        if grid_size > 1:
+            mid = grid_size // 2
+            if not np.any(np.isclose(alpha_range, 0.0)):
+                alpha_range[mid] = 0.0
+            if not np.any(np.isclose(beta_range, 0.0)):
+                beta_range[mid] = 0.0
         
         X = np.zeros((grid_size, grid_size))
         Y = np.zeros((grid_size, grid_size))
@@ -609,6 +620,15 @@ class Explorer:
         alpha_range = np.linspace(-range_scale, range_scale, grid_size)
         beta_range = np.linspace(-range_scale, range_scale, grid_size)
         gamma_range = np.linspace(-range_scale, range_scale, grid_size)
+        # Ensure 0 is sampled (helps baseline visibility and numerical stability in exports).
+        if grid_size > 1:
+            mid = grid_size // 2
+            if not np.any(np.isclose(alpha_range, 0.0)):
+                alpha_range[mid] = 0.0
+            if not np.any(np.isclose(beta_range, 0.0)):
+                beta_range[mid] = 0.0
+            if not np.any(np.isclose(gamma_range, 0.0)):
+                gamma_range[mid] = 0.0
 
         X = np.zeros((grid_size, grid_size, grid_size))
         Y = np.zeros((grid_size, grid_size, grid_size))
@@ -768,10 +788,26 @@ class Explorer:
             dir1_cpu = dir1.cpu()
             dir2_cpu = dir2.cpu()
             dir3_cpu = dir3.cpu()
-            
-            traj_1 = [torch.dot(weight, dir1_cpu).item() for weight in self._trajectory_weights]
-            traj_2 = [torch.dot(weight, dir2_cpu).item() for weight in self._trajectory_weights]
-            traj_3 = [torch.dot(weight, dir3_cpu).item() for weight in self._trajectory_weights]
+
+            # IMPORTANT:
+            # Explorer._normalize_direction_filterwise scales directions per-layer by ||w||, so directions are
+            # generally NOT unit vectors. If we use plain dot-products as "coordinates", we effectively mix
+            # coordinate scale with basis magnitude and can end up with extremely large trajectory coords and
+            # range_scales. That makes the sampled grid far from the true trajectory and produces wildly
+            # mis-scaled "landscape loss" values.
+            #
+            # Correct projection coefficient onto a (possibly non-unit) direction d is:
+            #   alpha = <x, d> / <d, d>
+            # so that alpha * d is the least-squares projection of x onto span(d).
+            def _proj_coeff(v: torch.Tensor, d: torch.Tensor) -> float:
+                denom = torch.dot(d, d).item()
+                if denom <= 1e-12:
+                    return 0.0
+                return (torch.dot(v, d).item() / denom)
+
+            traj_1 = [_proj_coeff(weight, dir1_cpu) for weight in self._trajectory_weights]
+            traj_2 = [_proj_coeff(weight, dir2_cpu) for weight in self._trajectory_weights]
+            traj_3 = [_proj_coeff(weight, dir3_cpu) for weight in self._trajectory_weights]
         
         elif mode == 'pca':
             # PCA降维

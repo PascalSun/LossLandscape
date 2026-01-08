@@ -1,5 +1,5 @@
 /**
- * API route to scan a folder and automatically import all .npz files
+ * API route to scan a folder and automatically import all JSON files
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -7,7 +7,6 @@ import { readdirSync, statSync, existsSync } from 'fs';
 import { join } from 'path';
 import path from 'path';
 
-import { npzToJson } from '@/lib/npz';
 import { importNpzData } from '@/lib/import-npz';
 
 export const dynamic = 'force-dynamic';
@@ -15,9 +14,9 @@ export const dynamic = 'force-dynamic';
 const PROJECT_ROOT = process.env.PROJECT_ROOT || path.join(process.cwd(), '..');
 
 /**
- * Recursively find all .npz files in a directory
+ * Recursively find all .json files in a directory
  */
-function findNpzFiles(dir: string, baseDir: string = dir): string[] {
+function findLandscapeFiles(dir: string, baseDir: string = dir): string[] {
   const files: string[] = [];
   
   if (!existsSync(dir)) {
@@ -32,8 +31,8 @@ function findNpzFiles(dir: string, baseDir: string = dir): string[] {
         const stat = statSync(fullPath);
         if (stat.isDirectory()) {
           // Recursively scan subdirectories
-          files.push(...findNpzFiles(fullPath, baseDir));
-        } else if (entry.endsWith('.npz')) {
+          files.push(...findLandscapeFiles(fullPath, baseDir));
+        } else if (entry.endsWith('.json') && !entry.includes('.export.meta.') && !entry.includes('.meta.')) {
           files.push(fullPath);
         }
       } catch (e) {
@@ -66,15 +65,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Folder not found: ${folderPathInput}` }, { status: 404 });
     }
 
-    // Find all .npz files
-    const npzFiles = findNpzFiles(folderPath);
+    // Find all .json files
+    const jsonFiles = findLandscapeFiles(folderPath);
     
-    if (npzFiles.length === 0) {
+    if (jsonFiles.length === 0) {
       return NextResponse.json({ 
         success: true, 
         files: [], 
         imported: 0,
-        message: 'No .npz files found in the specified folder' 
+        message: 'No .json files found in the specified folder' 
       });
     }
 
@@ -82,30 +81,37 @@ export async function POST(request: NextRequest) {
     const imported: number[] = [];
     const errors: string[] = [];
 
-    for (const npzFile of npzFiles) {
+    for (const jsonFile of jsonFiles) {
       try {
-        const data = await npzToJson(npzFile);
+        const content = await import('fs/promises').then(fs => fs.readFile(jsonFile, 'utf-8'));
+        // Sanitize NaN/Infinity
+        const sanitized = content
+          .replace(/\bNaN\b/g, 'null')
+          .replace(/\bInfinity\b/g, 'null')
+          .replace(/\b-Infinity\b/g, 'null');
+        const data = JSON.parse(sanitized);
         
         // Get relative path for display
-        const relPath = path.relative(PROJECT_ROOT, npzFile);
-        const displayPath = relPath.startsWith('..') ? path.basename(npzFile) : relPath;
+        const relPath = path.relative(PROJECT_ROOT, jsonFile);
+        const displayPath = relPath.startsWith('..') ? path.basename(jsonFile) : relPath;
 
         // Import using unified import function
         const sourceLabel = `Scanned: ${displayPath}`;
-        const id = await importNpzData(data, sourceLabel);
+        const filename = path.basename(jsonFile);
+        const id = await importNpzData(data, sourceLabel, jsonFile, undefined, undefined, 'scan', filename);
 
         imported.push(id);
       } catch (error: any) {
-        console.error(`Failed to import ${npzFile}:`, error);
-        errors.push(`${path.basename(npzFile)}: ${error.message}`);
+        console.error(`Failed to import ${jsonFile}:`, error);
+        errors.push(`${path.basename(jsonFile)}: ${error.message}`);
       }
     }
 
     return NextResponse.json({
       success: true,
-      files: npzFiles.map(f => path.relative(PROJECT_ROOT, f)),
+      files: jsonFiles.map(f => path.relative(PROJECT_ROOT, f)),
       imported: imported.length,
-      total: npzFiles.length,
+      total: jsonFiles.length,
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error: any) {

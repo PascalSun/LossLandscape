@@ -517,6 +517,9 @@ export default function LossLandscape2D({
 
         ctx.save();
         for (let i = 0; i < trajectoryHighlight.traj_1.length; i++) {
+          const ep = trajectoryHighlight.epochs?.[i] ?? i;
+          if (ep > viewEpoch) continue;
+
           const p = toPx(trajectoryHighlight.traj_1[i], trajectoryHighlight.traj_2[i]);
           
           let opacity = 0.95;
@@ -621,7 +624,7 @@ export default function LossLandscape2D({
     ro.observe(wrap);
     render();
     return () => ro.disconnect();
-  }, [lossGrid, stats, filteredTrajectory, useLog, trajectoryHighlight, sliceGamma, sliceThreshold, xLabel, planeLabel]);
+  }, [lossGrid, stats, filteredTrajectory, useLog, trajectoryHighlight, sliceGamma, sliceThreshold, xLabel, planeLabel, viewEpoch]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -830,14 +833,21 @@ export default function LossLandscape2D({
               style={{
                 width: 24,
                 height: 160,
-                borderRadius: 12,
-                border: `2px solid ${isDark ? 'rgba(255,255,255,0.35)' : 'rgba(15,23,42,0.22)'}`,
-                background: `linear-gradient(to top, ${Array.from({ length: 12 }, (_, i) => {
-                  const t = i / 11;
-                  const c = getViridisColor(t);
-                  const rgb = `rgb(${c.r},${c.g},${c.b})`;
-                  return rgb;
-                }).join(',')})`,
+                borderRadius: 0,
+                border: 'none',
+                background: `linear-gradient(to top, ${(() => {
+                  const steps = 20; // More steps for smoother gradient
+                  const colors: string[] = [];
+                  for (let i = 0; i <= steps; i++) {
+                    // Ensure exact boundaries: t=0 for first, t=1 for last
+                    const t = i === 0 ? 0 : i === steps ? 1 : i / steps;
+                    const c = getViridisColor(t);
+                    const rgb = `rgb(${c.r},${c.g},${c.b})`;
+                    const stopPercent = i === 0 ? '0%' : i === steps ? '100%' : `${(i / steps * 100).toFixed(2)}%`;
+                    colors.push(`${rgb} ${stopPercent}`);
+                  }
+                  return colors.join(', ');
+                })()})`,
                 boxShadow: isDark
                   ? '0 4px 12px rgba(0,0,0,0.3), inset 0 0 20px rgba(255,255,255,0.1)'
                   : '0 4px 12px rgba(15,23,42,0.10), inset 0 0 20px rgba(255,255,255,0.25)',
