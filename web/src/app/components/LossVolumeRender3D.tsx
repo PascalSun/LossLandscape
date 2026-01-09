@@ -817,7 +817,7 @@ export default function LossVolumeRender3D({
           alignItems: 'center',
           gap: 8,
         }}>
-          <span>📦</span>
+          <span>🌐</span>
           <span>Loss Volume (3D)</span>
         </div>
         

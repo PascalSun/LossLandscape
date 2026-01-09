@@ -393,16 +393,16 @@ def compute_pca_directions(trajectory_weights, device, model):
 
 
 def generate_landscape(model, data_loader, loss_fn, loss_name, output_dir, device, 
-                      grid_size_2d=30, grid_size_3d=16, metadata_info=None,
+                      grid_size_1d=100, grid_size_2d=30, grid_size_3d=16, metadata_info=None,
                       trajectory_weights=None, trajectory_epochs=None, trajectory_base_weights=None,
                       pca_directions=None, pca_range_scale=None, training_stats=None):
-    """生成loss landscape（包括2D和3D）"""
+    """生成loss landscape（包括1D、2D和3D）"""
     
     landscape_path = f"{output_dir}/complete_example.landscape"
     storage = LandscapeStorage(landscape_path, mode='create')
     
     logger.info(f"\n{'='*60}")
-    logger.info(f"Generating {loss_name} Loss Landscape (2D + 3D)...")
+    logger.info(f"Generating {loss_name} Loss Landscape (1D + 2D + 3D)...")
     logger.info(f"{'='*60}")
     
     if loss_name == "mse":
@@ -427,6 +427,7 @@ def generate_landscape(model, data_loader, loss_fn, loss_name, output_dir, devic
     
     # 使用PCA计算出的参数，或者默认值
     range_scale = pca_range_scale if pca_range_scale is not None else 0.1
+    direction_1d = pca_directions[0] if pca_directions else None
     directions_2d = (pca_directions[0], pca_directions[1]) if pca_directions else None
     directions_3d = pca_directions if pca_directions else None
     
@@ -454,6 +455,7 @@ def generate_landscape(model, data_loader, loss_fn, loss_name, output_dir, devic
     
     # 收集landscape生成参数
     landscape_params = {
+        "grid_size_1d": grid_size_1d,
         "grid_size_2d": grid_size_2d,
         "grid_size_3d": grid_size_3d,
         "method": "PCA-aligned" if pca_directions else "Random",
@@ -569,8 +571,19 @@ def generate_landscape(model, data_loader, loss_fn, loss_name, output_dir, devic
 
         # If no trajectory is provided, we intentionally do NOT create a dummy trajectory.
         
-        # 2. 生成2D Surface (使用 PCA 前两个方向)
-        logger.info(f"\n[1/4] Generating 2D Loss Landscape surface...")
+        # 1. 生成1D Line
+        direction_desc = "PCA first direction" if direction_1d is not None else "random direction"
+        logger.info(f"\n[1/5] Generating 1D Loss Landscape line (using {direction_desc})...")
+        result_1d = explorer.build_line(
+            grid_size=grid_size_1d,
+            range_scale=range_scale,
+            direction=direction_1d,
+            verbose=True,
+        )
+        
+        # 2. 生成2D Surface
+        directions_desc = "PCA first two directions" if directions_2d is not None else "random directions"
+        logger.info(f"\n[2/5] Generating 2D Loss Landscape surface (using {directions_desc})...")
         result_2d = explorer.build_surface(
             grid_size=grid_size_2d,
             range_scale=range_scale,
@@ -578,8 +591,9 @@ def generate_landscape(model, data_loader, loss_fn, loss_name, output_dir, devic
             verbose=True,
         )
         
-        # 3. 生成3D Volume (使用 PCA 三个方向)
-        logger.info(f"\n[2/4] Generating 3D Loss Volume...")
+        # 3. 生成3D Volume
+        directions_3d_desc = "PCA three directions" if directions_3d is not None else "random directions"
+        logger.info(f"\n[3/5] Generating 3D Loss Volume (using {directions_3d_desc})...")
         result_3d = explorer.build_volume(
             grid_size=grid_size_3d,
             range_scale=range_scale,
@@ -591,12 +605,14 @@ def generate_landscape(model, data_loader, loss_fn, loss_name, output_dir, devic
         # 注意：这里必须显式传入 directions，否则 build_trajectory 可能会自己生成或者使用缓存的
         # 传入我们用于生成 landscape 的相同 PCA 方向，确保坐标一致
         if trajectory_weights is not None and len(explorer._trajectory_weights) > 1:
-            logger.info(f"\n[3/4] Building trajectory...")
+            logger.info(f"\n[4/5] Building trajectory...")
             trajectory = explorer.build_trajectory(mode='fixed', directions=directions_3d)
             logger.info(f"✓ Trajectory generated: {len(trajectory['epochs'])} points")
+        else:
+            logger.info(f"\n[4/5] Skipping trajectory (no training data)")
     
     # 导出数据
-    logger.info(f"\n[4/4] Exporting data...")
+    logger.info(f"\n[5/5] Exporting data...")
     json_path = f"{output_dir}/complete_example.json"
     storage.export_for_frontend(json_path)
     storage.close()
@@ -609,7 +625,7 @@ def generate_landscape(model, data_loader, loss_fn, loss_name, output_dir, devic
         except OSError as e:
             logger.warning(f"Error removing intermediate file {landscape_path}: {e}")
     
-    return result_2d, result_3d, json_path
+    return result_1d, result_2d, result_3d, json_path
 
 
 def main():
@@ -763,6 +779,7 @@ def main():
         loss_name="mse",
         output_dir=mse_with_dir,
         device=device,
+        grid_size_1d=100,
         grid_size_2d=30,
         grid_size_3d=16,
         metadata_info={**base_metadata, "loss_type": "MSE", "train_mode": "with_train"},
@@ -786,6 +803,7 @@ def main():
         loss_name="mse",
         output_dir=mse_no_dir,
         device=device,
+        grid_size_1d=100,
         grid_size_2d=30,
         grid_size_3d=16,
         metadata_info={**base_metadata, "loss_type": "MSE", "train_mode": "no_train"},
@@ -807,6 +825,7 @@ def main():
         loss_name="physics",
         output_dir=phy_with_dir,
         device=device,
+        grid_size_1d=100,
         grid_size_2d=30,
         grid_size_3d=16,
         metadata_info={**base_metadata, "loss_type": "Physics", "train_mode": "with_train"},
@@ -830,6 +849,7 @@ def main():
         loss_name="physics",
         output_dir=phy_no_dir,
         device=device,
+        grid_size_1d=100,
         grid_size_2d=30,
         grid_size_3d=16,
         metadata_info={**base_metadata, "loss_type": "Physics", "train_mode": "no_train"},

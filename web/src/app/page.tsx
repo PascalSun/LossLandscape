@@ -20,6 +20,11 @@ const LossLandscape2D = dynamic(() => import('./components/LossLandscape2D'), {
   loading: () => <div>Loading 2D visualization...</div>,
 });
 
+const LossLandscape1D = dynamic(() => import('./components/LossLandscape1D'), {
+  ssr: false,
+  loading: () => <div>Loading 1D visualization...</div>,
+});
+
 const LossVolumeSlice2D = dynamic(() => import('./components/LossVolumeSlice2D'), {
   ssr: false,
   loading: () => <div>Loading volume slice...</div>,
@@ -50,7 +55,7 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   
   // Viewer controls
-  const [viewMode, setViewMode] = useState<'2d' | '3d' | 'metadata'>('2d');
+  const [viewMode, setViewMode] = useState<'1d' | '2d' | '3d' | 'metadata'>('2d');
   const [view3DRenderMode, setView3DRenderMode] = useState<'slice' | 'volume'>('slice');
   const [hoveredView, setHoveredView] = useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
@@ -1791,8 +1796,14 @@ export default function Page() {
     if (!data) return null;
     
     // Build available view modes based on data
-    // Order: 2D -> 3D (with render mode selector) -> Metadata
+    // Order: 1D -> 2D -> 3D (with render mode selector) -> Metadata
     const availableViews: Array<{key: typeof viewMode, label: string, requires3D: boolean, desc: string}> = [];
+    
+    if (data.loss_line_1d && data.loss_line_1d.length > 0) {
+      availableViews.push(
+        { key: '1d', label: '1D', requires3D: false, desc: '1D Loss Landscape visualization' }
+      );
+    }
     
     if (data.loss_grid_2d) {
       availableViews.push(
@@ -2133,14 +2144,14 @@ export default function Page() {
             </div>
           )}
 
-          {/* 3D Render Mode Selector - Top Left, Draggable */}
+          {/* 3D Render Mode Selector - Bottom Left, Draggable */}
           {viewMode === '3d' && data?.loss_grid_3d && (
             <div
               style={{
                 position: 'absolute',
-                top: 16,
+                bottom: 16,
                 left: 16,
-                transform: `translate(${renderModeCardPos.x}px, ${renderModeCardPos.y}px)`,
+                transform: `translate(${renderModeCardPos.x}px, ${-renderModeCardPos.y}px)`,
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 10,
@@ -2229,9 +2240,53 @@ export default function Page() {
                 </div>
               </div>
             )
-          ) : data?.X?.length && (data?.loss_grid_2d?.length || data?.loss_grid_3d?.length) ? (
+          ) : data?.X?.length && (data?.loss_grid_2d?.length || data?.loss_grid_3d?.length || data?.loss_line_1d?.length) ? (
              // Render based on viewMode instead of mode
-             viewMode === '2d' ? (
+             viewMode === '1d' ? (
+                // 1D View - Full screen
+                (() => {
+                  const has1D = data?.loss_line_1d && data.loss_line_1d.length > 0;
+                  const x1d = data?.X_1d || (data?.X && Array.isArray(data.X) && data.X.length > 0 && typeof data.X[0] === 'number' ? data.X : null);
+                  
+                  return has1D && x1d ? (
+                    <LossLandscape1D
+                      X={x1d as number[]}
+                      lossLine={data.loss_line_1d}
+                      baselineLoss={data.baseline_loss_1d || data.baseline_loss}
+                      trajectory={
+                        data.trajectory_1 && data.trajectory_1.length > 0
+                          ? (() => {
+                              const traj = {
+                                traj_1: data.trajectory_1,
+                                epochs: data.trajectory_epochs || [],
+                              };
+                              return traj;
+                            })()
+                          : undefined
+                      }
+                      trajectoryHighlight={
+                        data.trajectory_1 && data.trajectory_1.length > 0
+                          ? (() => {
+                              const traj = {
+                                traj_1: data.trajectory_1,
+                                epochs: data.trajectory_epochs || [],
+                              };
+                              return traj;
+                            })()
+                          : undefined
+                      }
+                    />
+                  ) : (
+                    <div className="emptyState">
+                      <div className="emptyStateIcon">📊</div>
+                      <div>
+                        <h3 className="emptyStateTitle">No 1D Data Available</h3>
+                        <p className="emptyStateDesc">This run does not have 1D loss landscape data.</p>
+                      </div>
+                    </div>
+                  );
+                })()
+             ) : viewMode === '2d' ? (
                 surfaceMode === '2d' ? (
                   <LossLandscape2D
                     X={data.X}

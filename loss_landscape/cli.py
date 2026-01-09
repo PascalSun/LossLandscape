@@ -45,6 +45,17 @@ def view(input: str):
         logger.info(f"Grid size: {grid_size}")
         logger.info(f"Baseline loss: {baseline_loss:.6f}")
         
+        # 1D data
+        loss_line_1d = data.get('loss_line_1d', [])
+        if loss_line_1d:
+            loss_array = np.array(loss_line_1d)
+            loss_min = float(loss_array.min())
+            loss_max = float(loss_array.max())
+            loss_mean = float(loss_array.mean())
+            logger.info(f"[1D] Loss range: [{loss_min:.6f}, {loss_max:.6f}]")
+            logger.info(f"[1D] Average loss: {loss_mean:.6f}")
+            logger.info(f"[1D] Points: {len(loss_line_1d)}")
+        
         # 2D data
         loss_grid_2d = data.get('loss_grid_2d', [])
         if loss_grid_2d:

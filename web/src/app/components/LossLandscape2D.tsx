@@ -816,7 +816,7 @@ export default function LossLandscape2D({
           alignItems: 'center',
           gap: 8,
         }}>
-          <span>📊</span>
+          <span>🌐</span>
           <span>Loss Landscape (2D)</span>
         </div>
         

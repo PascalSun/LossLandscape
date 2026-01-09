@@ -181,6 +181,63 @@ class LandscapeStorage:
                 self.conn.commit()
             except Exception:
                 pass
+
+    def save_line(self, line_data: Dict[str, Any]):
+        """
+        保存1D线条数据到DuckDB。
+        
+        Args:
+            line_data: Explorer.build_line() 返回的字典
+        """
+        try:
+            X = np.array(line_data['X'])
+            loss_line = np.array(line_data['loss_line_1d'])
+            
+            grid_size = len(X)
+            epoch = line_data.get('epoch', 0)  # 线条数据默认epoch=0
+            
+            # 准备批量插入数据
+            data = []
+            for i in range(grid_size):
+                data.append(
+                    [
+                        epoch,
+                        float(X[i]),
+                        None,  # y坐标（1D线条不使用）
+                        None,  # z坐标（1D线条不使用）
+                        float(loss_line[i]),
+                        False,  # is_trajectory
+                    ]
+                )
+            
+            # 批量插入
+            if data:
+                self.conn.executemany(
+                    "INSERT INTO landscape_points (epoch, x, y, z, loss, is_trajectory) VALUES (?, ?, ?, ?, ?, ?)",
+                    data
+                )
+                self.conn.commit()
+                print(f"[LandscapeStorage] Saved {len(data)} 1D line points to database")
+            else:
+                print(f"[LandscapeStorage] WARNING: No data to save for line (grid_size={grid_size})")
+        except Exception as e:
+            print(f"[LandscapeStorage] ERROR saving line data: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
+
+        # Persist true baseline loss separately.
+        if "baseline_loss" in line_data:
+            try:
+                baseline = float(line_data["baseline_loss"])
+                self.conn.execute("DELETE FROM metadata WHERE key = 'baseline_loss_1d'")
+                self.conn.execute(
+                    "INSERT INTO metadata (key, value) VALUES ('baseline_loss_1d', ?)",
+                    [str(baseline)],
+                )
+                self.conn.commit()
+            except Exception:
+                pass
     
     def save_trajectory(self, trajectory_data: Dict[str, Any]):
         """
@@ -296,12 +353,22 @@ class LandscapeStorage:
         Returns:
             包含X, Y, loss_grid_2d等字段的字典
         """
-        # 查询二维表面数据（z为空）
+        # 查询1D线条数据（y和z都为空）
+        line_df = self.conn.execute(
+            """
+            SELECT x, loss, epoch
+            FROM landscape_points
+            WHERE is_trajectory = FALSE AND y IS NULL AND z IS NULL
+            ORDER BY epoch, x
+        """
+        ).df()
+        
+        # 查询二维表面数据（z为空，但y不为空）
         surface_df = self.conn.execute(
             """
             SELECT x, y, loss, epoch
             FROM landscape_points
-            WHERE is_trajectory = FALSE AND z IS NULL
+            WHERE is_trajectory = FALSE AND z IS NULL AND y IS NOT NULL
             ORDER BY epoch, x, y
         """
         ).df()
@@ -316,7 +383,10 @@ class LandscapeStorage:
         """
         ).df()
         
-        # 构建2D网格数据
+        # 初始化result字典
+        result = {}
+        
+        # 先构建2D网格数据（优先，因为这是主要视图）
         if len(surface_df) > 0:
             # Prefer the true baseline loss saved by Explorer, if available.
             baseline_loss_2d = None
@@ -347,23 +417,55 @@ class LandscapeStorage:
                 Y[i, j] = row['y']
                 loss_grid[i, j] = row['loss']
             
-            result = {
-                "X": X.tolist(),
-                "Y": Y.tolist(),
-                "loss_grid_2d": loss_grid.tolist(),
-                "baseline_loss": float(baseline_loss_2d) if baseline_loss_2d is not None else float(loss_grid.min()),
-                "grid_size": grid_size,
-                "mode": "2d",
-            }
-        else:
-            result = {
-                "X": [],
-                "Y": [],
-                "loss_grid_2d": [],
-                "baseline_loss": 0.0,
-                "grid_size": 0,
-                "mode": "2d",
-            }
+            # 2D数据总是使用X和Y字段（主要视图）
+            result["X"] = X.tolist()
+            result["Y"] = Y.tolist()
+            result["loss_grid_2d"] = loss_grid.tolist()
+            result["baseline_loss"] = float(baseline_loss_2d) if baseline_loss_2d is not None else float(loss_grid.min())
+            result["grid_size"] = grid_size
+            result["mode"] = "2d"
+
+        # 然后构建1D线条数据（作为附加数据）
+        if len(line_df) > 0:
+            # Prefer the true baseline loss saved by Explorer, if available.
+            baseline_loss_1d = None
+            try:
+                row = self.conn.execute(
+                    "SELECT value FROM metadata WHERE key = 'baseline_loss_1d'"
+                ).fetchone()
+                if row and row[0] is not None:
+                    baseline_loss_1d = float(row[0])
+            except Exception:
+                baseline_loss_1d = None
+
+            # 获取唯一的x值并排序
+            unique_x = sorted(line_df['x'].unique())
+            grid_size = len(unique_x)
+            
+            # 构建1D数组
+            X_1d = np.zeros(grid_size)
+            loss_line = np.zeros(grid_size)
+            
+            for idx, row in line_df.iterrows():
+                i = unique_x.index(row['x'])
+                X_1d[i] = row['x']
+                loss_line[i] = row['loss']
+            
+            # 1D数据使用独立的字段名
+            result["X_1d"] = X_1d.tolist()
+            result["loss_line_1d"] = loss_line.tolist()
+            result["baseline_loss_1d"] = float(baseline_loss_1d) if baseline_loss_1d is not None else float(loss_line.min())
+            result["grid_size_1d"] = grid_size
+            
+            # 如果同时有2D数据，更新mode
+            if "loss_grid_2d" in result:
+                result["mode"] = "1d+2d"  # 同时包含1D和2D数据
+            else:
+                result["mode"] = "1d"
+                # 如果只有1D数据，则使用X和Y字段（向后兼容）
+                result["X"] = X_1d.tolist()
+                result["baseline_loss"] = float(baseline_loss_1d) if baseline_loss_1d is not None else float(loss_line.min())
+                result["grid_size"] = grid_size
 
         # 查询并构建3D体积数据（z不为空）
         volume_df = self.conn.execute(

@@ -567,6 +567,110 @@ class Explorer:
         
         return result
 
+    def _apply_perturbation_1d(self, direction: torch.Tensor, alpha: float):
+        """
+        应用一维扰动到模型参数。
+        
+        Args:
+            direction: 方向向量（已归一化）
+            alpha: 扰动强度
+        """
+        base_params = self._flattened_params.to(self.device)
+        dir1 = direction.to(self.device)
+        
+        # 计算扰动后的参数
+        perturbed = base_params + alpha * dir1
+        
+        # 重新组装并加载到模型
+        state_dict = self._flatten_to_model(perturbed)
+        self.model.load_state_dict(state_dict, strict=False)
+
+    def build_line(
+        self,
+        grid_size: int = 100,
+        range_scale: float = 0.1,
+        direction: Optional[torch.Tensor] = None,
+        verbose: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        生成1D Loss Landscape：在当前权重周围沿单一方向采样，生成一条loss曲线。
+        
+        Args:
+            grid_size: 采样点数量
+            range_scale: 扰动范围缩放因子
+            direction: 可选的方向向量。如果为None，自动生成随机方向
+            verbose: 是否打印进度
+            
+        Returns:
+            包含X, loss_line等数据的字典
+        """
+        if direction is None:
+            # 生成随机方向
+            rand = torch.randn_like(self._flattened_params)
+            dir1 = self._normalize_direction_filterwise(rand)
+        else:
+            dir1 = direction
+            # 确保方向已归一化
+            dir1 = self._normalize_direction_filterwise(dir1)
+        
+        # 存储方向（用于后续轨迹可视化）
+        self._fixed_directions = (dir1, dir1)  # 对于1D，两个方向相同
+        
+        # 生成采样点
+        alpha_range = np.linspace(-range_scale, range_scale, grid_size)
+        # Ensure 0 is sampled
+        if grid_size > 1:
+            mid = grid_size // 2
+            if not np.any(np.isclose(alpha_range, 0.0)):
+                alpha_range[mid] = 0.0
+        
+        X = np.zeros(grid_size)
+        loss_line = np.zeros(grid_size)
+        
+        # 计算baseline loss（原点）
+        self._restore_parameters()
+        baseline_loss = self._evaluate_loss()
+        
+        if verbose:
+            logger.info(f"[1D] Baseline loss: {baseline_loss:.6f}")
+            logger.info(f"[1D] Computing {grid_size} points...")
+        
+        # 计算loss
+        for i, alpha in enumerate(alpha_range):
+            # 应用扰动
+            self._apply_perturbation_1d(dir1, alpha)
+            
+            # 评估loss
+            loss = self._evaluate_loss()
+            
+            X[i] = alpha
+            loss_line[i] = loss
+            
+            if verbose and (i + 1) % (grid_size // 10) == 0:
+                logger.info(f"[1D] Progress: {i+1}/{grid_size} ({100*(i+1)/grid_size:.1f}%)")
+        
+        # 恢复原始参数
+        self._restore_parameters()
+        
+        # 准备返回数据
+        result = {
+            'X': X.tolist(),
+            'loss_line_1d': loss_line.tolist(),
+            'baseline_loss': float(baseline_loss),
+            'grid_size': grid_size,
+            'range_scale': range_scale,
+            'mode': '1d',
+        }
+        
+        # 保存到storage（如果提供）
+        if self.storage is not None:
+            self.storage.save_line(result)
+        
+        if verbose:
+            logger.info(f"[1D] Line generation completed. Loss range: [{loss_line.min():.6f}, {loss_line.max():.6f}]")
+        
+        return result
+
     def _apply_perturbation_3d(
         self,
         direction1: torch.Tensor,
