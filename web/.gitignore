@@ -41,3 +41,5 @@ next-env.d.ts
 !src/lib/
 
 !next-env.d.ts
+
+!lib

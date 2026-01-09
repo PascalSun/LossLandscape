@@ -14,19 +14,43 @@ export function getDatabase(): duckdb.Database {
     const dbPath =
       process.env.DUCKDB_PATH ||
       path.join(process.cwd(), 'data', 'app.duckdb');
-    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-    db = new duckdb.Database(dbPath);
+    console.log(`[DB] Initializing DuckDB at ${dbPath}`);
+    
+    try {
+      fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+      db = new duckdb.Database(dbPath, duckdb.OPEN_READWRITE | duckdb.OPEN_CREATE, (err) => {
+        if (err) {
+          console.error('[DB] Failed to open database:', err);
+          db = null; // Reset on failure
+        } else {
+          console.log('[DB] Database opened successfully');
+        }
+      });
+    } catch (e) {
+      console.error('[DB] Exception during database initialization:', e);
+      throw e;
+    }
   }
   return db;
 }
 
 export function getConnection(): duckdb.Connection {
-  const conn = getDatabase().connect();
-  if (!schemaInitialized) {
-    initializeSchema(conn);
-    schemaInitialized = true;
+  const database = getDatabase();
+  try {
+    const conn = database.connect();
+    if (!schemaInitialized) {
+      console.log('[DB] Initializing schema');
+      initializeSchema(conn);
+      schemaInitialized = true;
+    }
+    return conn;
+  } catch (e) {
+    console.error('[DB] Failed to create connection:', e);
+    // If connection fails, maybe the DB instance is bad. Reset it.
+    db = null;
+    schemaInitialized = false;
+    throw e;
   }
-  return conn;
 }
 
 function initializeSchema(conn: duckdb.Connection) {
@@ -47,6 +71,7 @@ function initializeSchema(conn: duckdb.Connection) {
       loss_grid_3d TEXT,
       baseline_loss REAL,
       trajectory_data TEXT,
+      hessian TEXT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
@@ -58,6 +83,7 @@ function initializeSchema(conn: duckdb.Connection) {
   conn.run(`ALTER TABLE loss_landscape_data ADD COLUMN IF NOT EXISTS import_source TEXT`);
   conn.run(`ALTER TABLE loss_landscape_data ADD COLUMN IF NOT EXISTS import_filename TEXT`);
   conn.run(`ALTER TABLE loss_landscape_data ADD COLUMN IF NOT EXISTS imported_at TIMESTAMP`);
+  conn.run(`ALTER TABLE loss_landscape_data ADD COLUMN IF NOT EXISTS hessian TEXT`);
   
   // Create trajectory_points table
   conn.run(`
@@ -96,6 +122,7 @@ export interface LossLandscapeData {
     val_losses?: number[];
   };
   export_metadata?: any; // Metadata from JSON file (training metadata) or .export.meta.json file
+  hessian?: any;
   import_source?: string; // Source of import: 'upload', 'scan', 'run', 'generate', etc.
   import_filename?: string; // Original filename if imported
   imported_at?: Date | string; // When the data was imported
@@ -153,9 +180,9 @@ export async function saveLossLandscape(data: LossLandscapeData): Promise<number
   return new Promise((resolve, reject) => {
     const sql = `
       INSERT INTO loss_landscape_data
-        (id, config_path, run_dir, mode, direction, grid_size, X, Y, Z, loss_grid_2d, loss_grid_3d, baseline_loss, trajectory_data, export_metadata, import_source, import_filename, imported_at)
+        (id, config_path, run_dir, mode, direction, grid_size, X, Y, Z, loss_grid_2d, loss_grid_3d, baseline_loss, trajectory_data, hessian, export_metadata, import_source, import_filename, imported_at)
       VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id
     `;
     const params = [
@@ -172,6 +199,7 @@ export async function saveLossLandscape(data: LossLandscapeData): Promise<number
         data.loss_grid_3d ? JSON.stringify(data.loss_grid_3d) : null,
         data.baseline_loss,
         data.trajectory_data ? JSON.stringify(data.trajectory_data) : null,
+        data.hessian ? JSON.stringify(data.hessian) : null,
         data.export_metadata ? JSON.stringify(data.export_metadata) : null,
         data.import_source || null,
         data.import_filename || null,
@@ -212,6 +240,7 @@ export async function getLossLandscape(id: number): Promise<LossLandscapeData | 
             loss_grid_3d: row.loss_grid_3d ? JSON.parse(row.loss_grid_3d) : undefined,
             baseline_loss: row.baseline_loss,
             trajectory_data: row.trajectory_data ? JSON.parse(row.trajectory_data) : undefined,
+            hessian: row.hessian ? JSON.parse(row.hessian) : undefined,
             export_metadata: row.export_metadata ? JSON.parse(row.export_metadata) : undefined,
             import_source: row.import_source,
             import_filename: row.import_filename,
@@ -246,6 +275,7 @@ export async function listLossLandscapes(): Promise<LossLandscapeData[]> {
               loss_grid_3d: row.loss_grid_3d ? JSON.parse(row.loss_grid_3d) : undefined,
               baseline_loss: row.baseline_loss,
               trajectory_data: row.trajectory_data ? JSON.parse(row.trajectory_data) : undefined,
+              hessian: row.hessian ? JSON.parse(row.hessian) : undefined,
               export_metadata: row.export_metadata ? JSON.parse(row.export_metadata) : undefined,
               import_source: row.import_source,
               import_filename: row.import_filename,

@@ -10,13 +10,14 @@
   },
   "dependencies": {
     "@radix-ui/react-tooltip": "^1.1.2",
-    "@react-three/drei": "^9.122.0",
-    "@react-three/fiber": "9.0.0-alpha.8",
-    "duckdb": "^0.9.0",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.5.0",
+    "duckdb": "^1.4.3",
     "isosurface": "^1.0.0",
     "next": "^16.1.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "recharts": "^3.6.0",
     "three": "^0.165.0",
     "three-stdlib": "^2.30.4",
     "zod": "^3.22.0"
@@ -31,12 +32,6 @@
     "typescript": "^5.3.0"
   },
   "overrides": {
-    "@react-three/fiber": "9.0.0-alpha.8",
-    "@react-three/drei": {
-      "@react-three/fiber": "9.0.0-alpha.8"
-    },
-    "@react-spring/three": {
-      "@react-three/fiber": "9.0.0-alpha.8"
-    }
+    "node-gyp": "^11.1.0"
   }
 }

@@ -14,6 +14,8 @@ from loguru import logger
 if TYPE_CHECKING:
     from .storage import LandscapeStorage
 
+from .hessian import HessianCalculator
+
 
 class Explorer:
     """
@@ -964,3 +966,157 @@ class Explorer:
             raise ValueError(f"模式必须是'fixed'或'pca'，得到: {mode}")
         self._trajectory_mode = mode
 
+    def build_hessian_trajectory(
+        self,
+        top_k: int = 5,
+        compute_trace: bool = True,
+        max_batches: Optional[int] = 5,
+        verbose: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        沿轨迹计算Hessian特征。
+        
+        Args:
+            top_k: 计算前k个特征值 (used as fallback or parameter for older methods)
+            compute_trace: 是否计算Hessian迹
+            max_batches: 计算Hessian时使用的最大batch数（减少计算量）
+            verbose: 是否打印进度
+            
+        Returns:
+            hessian_data 字典
+        """
+        if len(self._trajectory_weights) == 0:
+            raise ValueError("没有记录的轨迹点。")
+            
+        # 准备 HessianCalculator
+        hessian_calc = HessianCalculator(
+            self.model,
+            self.loss_fn,
+            self.data_loader,
+            device=self.device,
+            max_batches=max_batches
+        )
+        
+        results = {
+            'epochs': [],
+            'max_eigenvalue': [],
+            'trace': [],
+            'top_eigenvalues': []
+        }
+        
+        total = len(self._trajectory_weights)
+        
+        if verbose:
+            logger.info(f"Computing Hessian metrics for {total} points...")
+        
+        # 备份当前参数（虽然restore会覆盖，但好习惯）
+        # self._backup_parameters() # Assume already backed up or managed by context
+        
+        # self._trajectory_weights 存储的是 offset = W_t - W_base
+        # self._flattened_params 存储的是 W_base
+        
+        base_params = self._flattened_params.to(self.device)
+        
+        for i, (epoch, weight_offset) in enumerate(zip(self._trajectory_epochs, self._trajectory_weights)):
+            if verbose:
+                logger.info(f"Hessian analysis: Epoch {epoch} ({i+1}/{total})")
+            
+            # 恢复该epoch的参数
+            current_flat = base_params + weight_offset.to(self.device)
+            state_dict = self._flatten_to_model(current_flat)
+            self.model.load_state_dict(state_dict, strict=False)
+            
+            # 计算 Top-K / Spectrum
+            # Use Lanczos for better density estimation (default k=40)
+            try:
+                # k=40, max_iter=40 gives us ~40 Ritz values approximating the spectrum
+                eigs = hessian_calc.compute_spectrum_lanczos(k=40, max_iter=40)
+            except Exception as e:
+                logger.warning(f"Lanczos failed at epoch {epoch}: {e}, falling back to Power Iteration")
+                eigs = hessian_calc.compute_top_eigenvalues(k=top_k)
+
+            # Max Eigenvalue (Sharpness)
+            if eigs:
+                # Lanczos returns algebraic sorted. Power iteration returns sorted magnitudes.
+                # To be safe:
+                max_eig = max(abs(min(eigs)), abs(max(eigs)))
+            else:
+                max_eig = 0.0
+            
+            # 计算 Trace
+            trace_val = 0.0
+            if compute_trace:
+                trace_val = hessian_calc.compute_trace()
+                
+            results['epochs'].append(epoch)
+            results['max_eigenvalue'].append(max_eig)
+            results['trace'].append(trace_val)
+            results['top_eigenvalues'].append(eigs)
+            
+        # 恢复原始参数
+        self._restore_parameters()
+        
+        # 保存
+        if self.storage is not None and hasattr(self.storage, 'save_hessian'):
+            self.storage.save_hessian(results)
+            
+        return results
+
+    def build_hessian_snapshot(
+        self,
+        epoch: int = 0,
+        top_k: int = 40,
+        compute_trace: bool = True,
+        max_batches: Optional[int] = 5,
+        verbose: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        在“当前权重点”计算一次 Hessian 特征（无训练轨迹时使用）。
+
+        这会导出一个单点的 Hessian 数据，便于前端展示为 Snapshot：
+          - epochs: [epoch]
+          - max_eigenvalue: [λmax]
+          - trace: [tr(H)]
+          - top_eigenvalues: [spectrum]
+        """
+        if self.data_loader is None:
+            raise ValueError("build_hessian_snapshot 需要 data_loader 来评估 loss/HVP")
+
+        hessian_calc = HessianCalculator(
+            self.model,
+            self.loss_fn,
+            self.data_loader,
+            device=self.device,
+            max_batches=max_batches,
+        )
+
+        if verbose:
+            logger.info(f"Hessian snapshot at epoch={epoch} ...")
+
+        # Spectrum: prefer Lanczos (gives a density-friendly set of Ritz values)
+        try:
+            eigs = hessian_calc.compute_spectrum_lanczos(k=top_k, max_iter=max(top_k, 40))
+        except Exception as e:
+            logger.warning(f"Lanczos failed for snapshot: {e}, falling back to Power Iteration")
+            eigs = hessian_calc.compute_top_eigenvalues(k=min(5, top_k))
+
+        if eigs:
+            max_eig = max(abs(min(eigs)), abs(max(eigs)))
+        else:
+            max_eig = 0.0
+
+        trace_val = 0.0
+        if compute_trace:
+            trace_val = float(hessian_calc.compute_trace())
+
+        results = {
+            "epochs": [int(epoch)],
+            "max_eigenvalue": [float(max_eig)],
+            "trace": [float(trace_val)],
+            "top_eigenvalues": [eigs],
+        }
+
+        if self.storage is not None and hasattr(self.storage, "save_hessian"):
+            self.storage.save_hessian(results)
+
+        return results

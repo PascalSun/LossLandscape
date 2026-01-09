@@ -16,7 +16,7 @@ const PROJECT_ROOT = process.env.PROJECT_ROOT || path.join(process.cwd(), '..');
 /**
  * Try to find and read the original JSON file to extract metadata and trajectory data
  */
-async function tryLoadDataFromRunDir(runDir: string | undefined): Promise<{ metadata?: any; trajectory_losses?: number[]; trajectory_val_losses?: number[] } | null> {
+async function tryLoadDataFromRunDir(runDir: string | undefined): Promise<{ metadata?: any; trajectory_losses?: number[]; trajectory_val_losses?: number[]; hessian?: any } | null> {
   if (!runDir) return null;
   
   try {
@@ -74,7 +74,7 @@ async function tryLoadDataFromRunDir(runDir: string | undefined): Promise<{ meta
         const jsonData = JSON.parse(sanitizedContent);
         
         // Extract metadata and trajectory data
-        const result: { metadata?: any; trajectory_losses?: number[]; trajectory_val_losses?: number[] } = {};
+        const result: { metadata?: any; trajectory_losses?: number[]; trajectory_val_losses?: number[]; hessian?: any } = {};
         
         if (jsonData.metadata) {
           result.metadata = jsonData.metadata;
@@ -95,6 +95,10 @@ async function tryLoadDataFromRunDir(runDir: string | undefined): Promise<{ meta
         }
         if (jsonData.trajectory_val_losses) {
           result.trajectory_val_losses = jsonData.trajectory_val_losses;
+        }
+
+        if (jsonData.hessian) {
+          result.hessian = jsonData.hessian;
         }
         
         return Object.keys(result).length > 0 ? result : null;
@@ -135,6 +139,7 @@ export async function GET(
 
     // Try to load metadata and trajectory data from original files if missing
     let loadedMetadata: any = undefined;
+    let loadedHessian: any = undefined;
     if (data.run_dir) {
       const loadedData = await tryLoadDataFromRunDir(data.run_dir);
       
@@ -162,6 +167,26 @@ export async function GET(
             }
           }
         }
+
+        if (loadedData.hessian && !data.hessian) {
+          loadedHessian = loadedData.hessian;
+          // Persist hessian so future reads don't rely on filesystem.
+          try {
+            const conn = getConnection();
+            conn.run(
+              `UPDATE loss_landscape_data SET hessian = ? WHERE id = ?`,
+              JSON.stringify(loadedData.hessian),
+              id,
+              (err: Error | null) => {
+                if (err) {
+                  console.warn(`Failed to update hessian in database for id ${id}:`, err);
+                }
+              }
+            );
+          } catch (updateErr) {
+            // Ignore update errors
+          }
+        }
         
         // Add trajectory losses if available
         if (loadedData.trajectory_losses && data.trajectory_data) {
@@ -183,6 +208,7 @@ export async function GET(
     // Frontend expects 'metadata' (from JSON file), not 'export_metadata' (from .export.meta.json)
     const responseData: any = {
       ...data,
+      hessian: data.hessian || loadedHessian,
       // Use loaded metadata if available, otherwise try to extract from export_metadata
       metadata: loadedMetadata || data.export_metadata?.metadata || 
         (data.export_metadata && typeof data.export_metadata === 'object' && 

@@ -68,6 +68,16 @@ class LandscapeStorage:
         self.conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_trajectory ON landscape_points(is_trajectory)
         """)
+        
+        # 创建Hessian表
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS hessian_metrics (
+                epoch INTEGER,
+                max_eigenvalue REAL,
+                trace REAL,
+                top_eigenvalues TEXT  -- JSON list
+            )
+        """)
     
     def save_surface(self, surface_data: Dict[str, Any]):
         """
@@ -291,6 +301,40 @@ class LandscapeStorage:
             """, [val_losses_json])
             self.conn.commit()
     
+    def save_hessian(self, hessian_data: Dict[str, Any]):
+        """
+        保存Hessian数据。
+        hessian_data: {
+            'epochs': [...],
+            'max_eigenvalue': [...],
+            'trace': [...],
+            'top_eigenvalues': [[...], [...]]
+        }
+        """
+        epochs = hessian_data['epochs']
+        max_eigs = hessian_data.get('max_eigenvalue', [None]*len(epochs))
+        traces = hessian_data.get('trace', [None]*len(epochs))
+        top_eigs = hessian_data.get('top_eigenvalues', [None]*len(epochs))
+        
+        import json
+        data = []
+        for i, epoch in enumerate(epochs):
+            eigs_json = json.dumps(top_eigs[i]) if top_eigs[i] is not None else None
+            data.append([
+                epoch, 
+                max_eigs[i], 
+                traces[i], 
+                eigs_json
+            ])
+            
+        if data:
+            self.conn.execute("DELETE FROM hessian_metrics")
+            self.conn.executemany(
+                "INSERT INTO hessian_metrics (epoch, max_eigenvalue, trace, top_eigenvalues) VALUES (?, ?, ?, ?)",
+                data
+            )
+            self.conn.commit()
+
     def save_metadata(self, metadata: Dict[str, Any]):
         """
         保存metadata信息到数据库。
@@ -540,6 +584,22 @@ class LandscapeStorage:
         metadata = self.get_metadata()
         if metadata:
             result["metadata"] = metadata
+            
+        # 查询并导出Hessian数据
+        hessian_df = self.conn.execute("""
+            SELECT epoch, max_eigenvalue, trace, top_eigenvalues
+            FROM hessian_metrics
+            ORDER BY epoch
+        """).df()
+        
+        if len(hessian_df) > 0:
+            import json
+            result["hessian"] = {
+                "epochs": hessian_df["epoch"].tolist(),
+                "max_eigenvalue": hessian_df["max_eigenvalue"].tolist(),
+                "trace": hessian_df["trace"].tolist(),
+                "top_eigenvalues": [json.loads(x) if x else [] for x in hessian_df["top_eigenvalues"]]
+            }
         
         # 在导出前清洗 NaN/Inf，避免前端 JSON.parse 失败
         import math

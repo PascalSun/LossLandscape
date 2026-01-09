@@ -486,6 +486,11 @@ def generate_landscape(model, data_loader, loss_fn, loss_name, output_dir, devic
                 "min_loss_epoch": training_stats["min_loss_epoch"],
                 "loss_reduction": float(training_stats["initial_loss"] - training_stats["final_loss"]) if training_stats["initial_loss"] and training_stats["final_loss"] else None,
                 "loss_reduction_percent": float((training_stats["initial_loss"] - training_stats["final_loss"]) / training_stats["initial_loss"] * 100) if training_stats["initial_loss"] and training_stats["final_loss"] and training_stats["initial_loss"] > 0 else None,
+                # Export per-epoch LR so the frontend can draw the stability boundary 2/η.
+                # (η is the learning rate.)
+                "learning_rate_history": [float(x) for x in (training_stats.get("learning_rate_history") or [])],
+                # Optional: keep val loss history for contextual overlays if needed
+                "val_loss_history": [float(x) for x in (training_stats.get("val_loss_history") or [])],
             }
         
         storage.save_metadata(full_metadata)
@@ -605,14 +610,24 @@ def generate_landscape(model, data_loader, loss_fn, loss_name, output_dir, devic
         # 注意：这里必须显式传入 directions，否则 build_trajectory 可能会自己生成或者使用缓存的
         # 传入我们用于生成 landscape 的相同 PCA 方向，确保坐标一致
         if trajectory_weights is not None and len(explorer._trajectory_weights) > 1:
-            logger.info(f"\n[4/5] Building trajectory...")
+            logger.info(f"\n[4/6] Building trajectory...")
             trajectory = explorer.build_trajectory(mode='fixed', directions=directions_3d)
             logger.info(f"✓ Trajectory generated: {len(trajectory['epochs'])} points")
+            
+            # 5. 计算 Hessian (仅当有轨迹时)
+            logger.info(f"\n[5/6] Analyzing Hessian along trajectory (Top-5 Eigs + Trace)...")
+            hessian_data = explorer.build_hessian_trajectory(top_k=5, max_batches=5) # Limit batches for speed in demo
+            logger.info(f"✓ Hessian analysis completed")
+            
         else:
-            logger.info(f"\n[4/5] Skipping trajectory (no training data)")
+            logger.info(f"\n[4/6] Skipping trajectory (no training data)")
+            # No-train mode: still compute a single Hessian snapshot at the current weights.
+            logger.info(f"\n[5/6] Analyzing Hessian snapshot (no trajectory)...")
+            _ = explorer.build_hessian_snapshot(epoch=0, top_k=40, max_batches=5)
+            logger.info("✓ Hessian snapshot completed")
     
     # 导出数据
-    logger.info(f"\n[5/5] Exporting data...")
+    logger.info(f"\n[6/6] Exporting data...")
     json_path = f"{output_dir}/complete_example.json"
     storage.export_for_frontend(json_path)
     storage.close()

@@ -35,6 +35,11 @@ const LossVolumeRender3D = dynamic(() => import('./components/LossVolumeRender3D
   loading: () => <div>Loading volume render...</div>,
 });
 
+const HessianAnalysis = dynamic(() => import('./components/HessianAnalysis'), {
+  ssr: false,
+  loading: () => <div>Loading Hessian analysis...</div>,
+});
+
 type GenerateResponse =
   | { success: true; data: any; id: number }
   | { error: string };
@@ -55,7 +60,7 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   
   // Viewer controls
-  const [viewMode, setViewMode] = useState<'1d' | '2d' | '3d' | 'metadata'>('2d');
+  const [viewMode, setViewMode] = useState<'1d' | '2d' | '3d' | 'metadata' | 'hessian'>('2d');
   const [view3DRenderMode, setView3DRenderMode] = useState<'slice' | 'volume'>('slice');
   const [hoveredView, setHoveredView] = useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
@@ -1817,6 +1822,14 @@ export default function Page() {
       );
     }
     
+    // Add Hessian view if data exists
+    if (data.hessian) {
+      const isSnapshot = Array.isArray(data?.hessian?.epochs) && data.hessian.epochs.length <= 1;
+      availableViews.push(
+        { key: 'hessian', label: 'Hessian', requires3D: false, desc: isSnapshot ? 'Hessian snapshot (no trajectory)' : 'Hessian metrics over training (λmax, Trace, Spectrum)' }
+      );
+    }
+    
     // Always add metadata view if data exists
     if (data.metadata) {
       availableViews.push(
@@ -2237,6 +2250,28 @@ export default function Page() {
                 <div>
                   <h3 className="emptyStateTitle">No Metadata Available</h3>
                   <p className="emptyStateDesc">This run does not have metadata information.</p>
+                </div>
+              </div>
+            )
+          ) : viewMode === 'hessian' ? (
+            // Hessian view
+            data && data.hessian ? (
+              <div style={{ 
+                height: '100%',
+                minHeight: 0,
+                background: 'var(--bg-card)',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+              }}>
+                <HessianAnalysis data={data.hessian} metadata={data.metadata} />
+              </div>
+            ) : (
+              <div className="emptyState">
+                <div className="emptyStateIcon">📉</div>
+                <div>
+                  <h3 className="emptyStateTitle">No Hessian Data Available</h3>
+                  <p className="emptyStateDesc">This run does not have Hessian metrics.</p>
                 </div>
               </div>
             )

@@ -32,6 +32,12 @@ export interface NpzData {
     losses?: number[];
     val_losses?: number[];
   };
+  hessian?: {
+    epochs?: number[];
+    max_eigenvalue?: (number | null)[];
+    trace?: (number | null)[];
+    top_eigenvalues?: (Array<number | null> | null)[];
+  };
 }
 
 /**
@@ -124,6 +130,35 @@ export function readJsonFileData(dataFilePath: string): { metadata?: any; trajec
   }
   
   return null;
+}
+
+/**
+ * Normalize/sanitize Hessian payload to guarantee finite numeric arrays.
+ */
+function sanitizeHessian(h: NpzData['hessian']): NpzData['hessian'] | undefined {
+  if (!h || typeof h !== 'object') return undefined;
+
+  const cleanArray = (arr: any[] | undefined) =>
+    Array.isArray(arr) ? arr.map((v) => (Number.isFinite(Number(v)) ? Number(v) : null)) : undefined;
+
+  const cleanTop = Array.isArray(h.top_eigenvalues)
+    ? h.top_eigenvalues.map((row) =>
+        Array.isArray(row) ? row.map((v) => (Number.isFinite(Number(v)) ? Number(v) : null)) : null
+      )
+    : undefined;
+
+  const epochs = cleanArray(h.epochs);
+  const max_eigenvalue = cleanArray(h.max_eigenvalue);
+  const trace = cleanArray(h.trace);
+
+  if (!epochs && !max_eigenvalue && !trace && !cleanTop) return undefined;
+
+  return {
+    epochs,
+    max_eigenvalue,
+    trace,
+    top_eigenvalues: cleanTop,
+  };
 }
 
 /**
@@ -235,6 +270,8 @@ export async function importNpzData(
   // Store JSON file metadata in export_metadata field (it's the actual training metadata)
   const metadataToStore = data.metadata || jsonFileData?.metadata || exportMeta;
 
+  const hessian = sanitizeHessian(data.hessian);
+
   // Build import data - only standard format
   const importData: LossLandscapeData = {
     config_path: sourceLabel,
@@ -249,6 +286,7 @@ export async function importNpzData(
     loss_grid_3d: data.loss_grid_3d,
     baseline_loss: data.baseline_loss || 0,
     trajectory_data: trajectoryData,
+    hessian,
     export_metadata: metadataToStore || undefined,
     import_source: importSource || undefined,
     import_filename: importFilename || (sourceFilePath ? path.basename(sourceFilePath) : undefined),
