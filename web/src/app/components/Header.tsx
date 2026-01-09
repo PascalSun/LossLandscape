@@ -14,7 +14,7 @@ export default function Header() {
         <div className="appLogo">
           <Image
             src="/assets/logo/android-chrome-192x192.png"
-            alt="LearnableKGE Logo"
+            alt="Dr.Sun LearnableKGE Logo"
             width={48}
             height={48}
             priority

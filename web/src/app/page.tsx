@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, useRef, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
 import { useI18n } from './i18n';
 import { useTheme } from './theme';
@@ -40,10 +39,6 @@ const HessianAnalysis = dynamic(() => import('./components/HessianAnalysis'), {
   loading: () => <div>Loading Hessian analysis...</div>,
 });
 
-type GenerateResponse =
-  | { success: true; data: any; id: number }
-  | { error: string };
-
 export default function Page() {
   const { t } = useI18n();
   const { theme } = useTheme();
@@ -62,9 +57,6 @@ export default function Page() {
   // Viewer controls
   const [viewMode, setViewMode] = useState<'1d' | '2d' | '3d' | 'metadata' | 'hessian'>('2d');
   const [view3DRenderMode, setView3DRenderMode] = useState<'slice' | 'volume'>('slice');
-  const [hoveredView, setHoveredView] = useState<string | null>(null);
-  const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
-  const buttonRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const [sliceIndex, setSliceIndex] = useState(0);
   const [sliceMode, setSliceMode] = useState<'2d' | '3d'>('3d');
   const [sliceAxis, setSliceAxis] = useState<'gamma' | 'alpha' | 'beta'>('gamma');

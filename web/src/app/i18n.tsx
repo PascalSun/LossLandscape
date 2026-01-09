@@ -8,7 +8,7 @@ export type Locale = 'en' | 'zh';
 const DICT = {
   en: {
     appName: 'LearnableKGE',
-    tagline: 'Visualize 2D/3D loss landscapes and training trajectories',
+    tagline: 'Loss Landscape',
     navGenerate: 'Generate',
     navViewer: 'Viewer',
     panelGenerateTitle: 'Generate',
@@ -80,7 +80,7 @@ const DICT = {
   },
   zh: {
     appName: 'LearnableKGE',
-    tagline: '可视化 2D/3D loss landscape 与训练轨迹',
+    tagline: 'Loss Landscape',
     navGenerate: '生成',
     navViewer: '预览',
     panelGenerateTitle: '生成',

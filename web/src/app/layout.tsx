@@ -5,7 +5,7 @@ import { I18nProvider } from './i18n';
 import { ThemeProvider } from './theme';
 
 export const metadata: Metadata = {
-  title: 'LearnableKGE - Loss Landscape Visualization',
+  title: 'Dr.Sun LearnableKGE',
   description: '2D/3D loss landscape visualization with trajectories for Physics-Informed Neural Networks',
   icons: {
     icon: [
