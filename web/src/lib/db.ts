@@ -120,10 +120,10 @@ export interface LossLandscapeData {
   X_1d?: number[]; // 1D X axis for 1D visualization
   baseline_loss_1d?: number; // Baseline loss for 1D visualization
   trajectory_data?: {
-    traj_1: number[];
-    traj_2: number[];
+    traj_1?: number[];
+    traj_2?: number[];
     traj_3?: number[];
-    epochs: number[];
+    epochs?: number[];
     losses?: number[];
     val_losses?: number[];
   };

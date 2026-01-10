@@ -741,12 +741,12 @@ export default function LossLandscape1D({
 
       {/* Hover tooltip */}
       {hoverInfo && (
-        <HoverCard
-          x={hoverInfo.px}
-          y={hoverInfo.py}
-          title={`${xLabel} = ${hoverInfo.x.toFixed(4)}`}
-          content={`Loss: ${fmtLoss(hoverInfo.loss)}`}
-        />
+        <HoverCard x={hoverInfo.px} y={hoverInfo.py} visible={true}>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>
+            {`${xLabel} = ${hoverInfo.x.toFixed(4)}`}
+          </div>
+          <div>{`Loss: ${fmtLoss(hoverInfo.loss)}`}</div>
+        </HoverCard>
       )}
     </div>
   );

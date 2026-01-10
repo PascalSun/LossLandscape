@@ -36,7 +36,7 @@ export interface NpzData {
     val_losses?: number[];
   };
   hessian?: {
-    epochs?: number[];
+    epochs?: (number | null)[];
     max_eigenvalue?: (number | null)[];
     trace?: (number | null)[];
     top_eigenvalues?: (Array<number | null> | null)[];
@@ -141,7 +141,7 @@ export function readJsonFileData(dataFilePath: string): { metadata?: any; trajec
 function sanitizeHessian(h: NpzData['hessian']): NpzData['hessian'] | undefined {
   if (!h || typeof h !== 'object') return undefined;
 
-  const cleanArray = (arr: any[] | undefined) =>
+  const cleanArray = (arr: any[] | undefined): (number | null)[] | undefined =>
     Array.isArray(arr) ? arr.map((v) => (Number.isFinite(Number(v)) ? Number(v) : null)) : undefined;
 
   const cleanTop = Array.isArray(h.top_eigenvalues)

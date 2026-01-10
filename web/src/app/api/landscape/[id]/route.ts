@@ -256,7 +256,7 @@ export async function DELETE(
     );
 
     // Delete the landscape record
-    return new Promise((resolve, reject) => {
+    return new Promise<Response>((resolve, reject) => {
       conn.run(
         `DELETE FROM loss_landscape_data WHERE id = ?`,
         id,
