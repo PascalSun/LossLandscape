@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import MetricChart from './MetricChart';
 import { useTheme } from '../theme';
+import { useI18n } from '../i18n';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import {
   AreaChart,
@@ -59,6 +60,7 @@ interface HessianAnalysisProps {
 
 export default function HessianAnalysis({ data, metadata }: HessianAnalysisProps) {
   const { theme } = useTheme();
+  const { t } = useI18n();
   const isDark = theme === 'dark';
   const isSnapshot = (data.epochs?.length || 0) <= 1;
   const [selectedEpochIndex, setSelectedEpochIndex] = useState<number>(
@@ -330,7 +332,7 @@ export default function HessianAnalysis({ data, metadata }: HessianAnalysisProps
               <span role="img" aria-label="hessian">
                 📉
               </span>
-              Hessian Analysis
+              {t.hessianAnalysis}
             </h1>
             <p
               style={{
@@ -342,8 +344,8 @@ export default function HessianAnalysis({ data, metadata }: HessianAnalysisProps
               }}
             >
               {isSnapshot
-                ? 'Static analysis of the loss landscape curvature at the current checkpoint.'
-                : 'Evolution of loss landscape curvature throughout training, analyzing the Hessian spectrum.'}
+                ? t.hessianStaticDesc
+                : t.hessianEvolutionDesc}
             </p>
           </div>
         </div>
@@ -368,9 +370,9 @@ export default function HessianAnalysis({ data, metadata }: HessianAnalysisProps
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
               <span style={{ fontSize: 16 }}>⚡</span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <span style={{ fontSize: 13, fontWeight: 700 }}>Spectral Monitor</span>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>{t.spectralMonitor}</span>
                 <span style={{ fontSize: 11, color: ui.muted }}>
-                  Epoch {currentEpoch} · λmax / Trace · slide to explore spectrum history
+                  {t.spectralMonitorHint.replace('{epoch}', String(currentEpoch))}
                 </span>
               </div>
               <div
@@ -447,21 +449,18 @@ export default function HessianAnalysis({ data, metadata }: HessianAnalysisProps
             >
               <div style={{ ...cardStyle, flex: 1, minHeight: 0 }}>
                 <div style={sectionHeaderStyle}>
-                  <span>Curvature Dynamics</span>
+                  <span>{t.curvatureDynamics}</span>
                   <HelpIcon
                     text={
                       <div>
                         <p className="mb-2">
-                          <strong>λmax (Sharpness):</strong> Largest eigenvalue of the Hessian,
-                          tracking the sharpest direction in the loss landscape.
+                          <strong>{t.lambdaMaxSharpness}</strong>
                         </p>
                         <p className="mb-2">
-                          <strong>Stability Boundary (2/η):</strong> If λmax exceeds this, training
-                          may become unstable for plain SGD.
+                          <strong>{t.stabilityBoundary}</strong>
                         </p>
                         <p>
-                          <strong>Trace:</strong> Sum of eigenvalues, representing total curvature
-                          around the current point.
+                          <strong>{t.traceDesc}</strong>
                         </p>
                       </div>
                     }
@@ -471,7 +470,7 @@ export default function HessianAnalysis({ data, metadata }: HessianAnalysisProps
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16, flex: 1, minHeight: 0 }}>
                   <div style={{ ...cardStyle, flex: 1, minHeight: 0 }}>
                     <MetricChart
-                      title="Sharpness (λmax)"
+                      title={t.sharpness}
                       color="#ef4444"
                       epochs={data.epochs}
                       values={data.max_eigenvalue}
@@ -483,7 +482,7 @@ export default function HessianAnalysis({ data, metadata }: HessianAnalysisProps
                         lrData.hasData
                           ? [
                               {
-                                label: 'Stability (2/η)',
+                                label: t.stability,
                                 color: '#f97316',
                                 values: lrData.stabilityBoundary,
                                 dashed: true,
@@ -495,7 +494,7 @@ export default function HessianAnalysis({ data, metadata }: HessianAnalysisProps
                   </div>
                   <div style={{ ...cardStyle, flex: 1, minHeight: 0 }}>
                     <MetricChart
-                      title="Total Curvature (Trace)"
+                      title={t.totalCurvature}
                       color="#3b82f6"
                       epochs={data.epochs}
                       values={data.trace}
@@ -523,17 +522,15 @@ export default function HessianAnalysis({ data, metadata }: HessianAnalysisProps
             >
               <div style={{ ...cardStyle, flex: 1, minHeight: 0 }}>
                 <div style={sectionHeaderStyle}>
-                  <span>Spectral Analysis</span>
+                  <span>{t.spectralAnalysis}</span>
                   <HelpIcon
                     text={
                       <div>
                         <p className="mb-2">
-                          <strong>Spectral Density:</strong> KDE of Hessian eigenvalues; the current
-                          epoch is highlighted.
+                          <strong>{t.spectralDensityDesc}</strong>
                         </p>
                         <p>
-                          <strong>Scree Plot:</strong> Top eigenvalues (algebraic order) to separate
-                          bulk spectrum from outliers.
+                          <strong>{t.screePlotDesc}</strong>
                         </p>
                       </div>
                     }
@@ -554,7 +551,7 @@ export default function HessianAnalysis({ data, metadata }: HessianAnalysisProps
                         flexShrink: 0,
                       }}
                     >
-                      <span>Spectral Density (KDE)</span>
+                      <span>{t.spectralDensity}</span>
                       {densityChartData && (
                         <div className="flex gap-3 text-xs">
                           <div className="flex items-center gap-1.5">
@@ -562,14 +559,14 @@ export default function HessianAnalysis({ data, metadata }: HessianAnalysisProps
                               className="w-2 h-2 rounded-full"
                               style={{ background: ui.accent }}
                             ></span>
-                            <span style={{ fontWeight: 600 }}>Epoch {currentEpoch}</span>
+                            <span style={{ fontWeight: 600 }}>{t.epoch} {currentEpoch}</span>
                           </div>
                           <div className="flex items-center gap-1.5 opacity-60">
                             <span
                               className="w-2 h-2 rounded-full"
                               style={{ background: isDark ? '#94a3b8' : '#cbd5e1' }}
                             ></span>
-                            <span>History</span>
+                            <span>{t.history}</span>
                           </div>
                         </div>
                       )}
@@ -616,8 +613,8 @@ export default function HessianAnalysis({ data, metadata }: HessianAnalysisProps
                                 fontSize: '12px',
                                 borderRadius: '6px',
                               }}
-                              labelFormatter={(v) => `Eigenvalue: ${Number(v).toFixed(4)}`}
-                              formatter={(val: any) => [Number(val).toFixed(4), `Density`]}
+                              labelFormatter={(v) => `${t.eigenvalue}: ${Number(v).toFixed(4)}`}
+                              formatter={(val: any) => [Number(val).toFixed(4), t.density]}
                             />
                             {densityChartData.series.map((s) => {
                               const color = getSeriesColor(s);
@@ -641,7 +638,7 @@ export default function HessianAnalysis({ data, metadata }: HessianAnalysisProps
                           className="flex items-center justify-center h-full text-muted-foreground"
                           style={{ fontSize: 13, opacity: 0.7 }}
                         >
-                          No density data available
+                          {t.noDensityData}
                         </div>
                       )}
                     </div>
@@ -649,7 +646,7 @@ export default function HessianAnalysis({ data, metadata }: HessianAnalysisProps
 
                   <div style={{ ...cardStyle, flex: 1, minHeight: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: ui.muted, flexShrink: 0 }}>
-                      Top-k Spectrum (Ranked)
+                      {t.topKSpectrum}
                     </div>
                     <div
                       style={{
@@ -680,7 +677,7 @@ export default function HessianAnalysis({ data, metadata }: HessianAnalysisProps
                               dataKey="rank"
                               tick={{ fontSize: 10, fill: ui.muted }}
                               label={{
-                                value: 'Rank',
+                                value: t.rank,
                                 position: 'insideBottom',
                                 offset: -8,
                                 fontSize: 10,
@@ -704,7 +701,7 @@ export default function HessianAnalysis({ data, metadata }: HessianAnalysisProps
                                 fontSize: '12px',
                                 borderRadius: '6px',
                               }}
-                              formatter={(val: any) => [Number(val).toExponential(4), 'Eigenvalue']}
+                              formatter={(val: any) => [Number(val).toExponential(4), t.eigenvalue]}
                             />
                             <ReferenceLine y={0} stroke={isDark ? '#4b5563' : '#cbd5e1'} />
                             <Bar dataKey="value" isAnimationActive={false} radius={[2, 2, 0, 0]}>
@@ -722,7 +719,7 @@ export default function HessianAnalysis({ data, metadata }: HessianAnalysisProps
                           className="flex items-center justify-center h-full text-muted-foreground"
                           style={{ fontSize: 13, opacity: 0.7 }}
                         >
-                          No spectrum data available
+                          {t.noSpectrumData}
                         </div>
                       )}
                     </div>

@@ -138,6 +138,8 @@ export async function GET(
     }
 
     // Try to load metadata and trajectory data from original files if missing
+    // Note: This is optional - if files don't exist (e.g., deleted after import),
+    // the route will still return data from the database (standalone mode)
     let loadedMetadata: any = undefined;
     let loadedHessian: any = undefined;
     if (data.run_dir) {

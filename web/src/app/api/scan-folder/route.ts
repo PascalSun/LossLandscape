@@ -6,8 +6,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { readdirSync, statSync, existsSync } from 'fs';
 import { join } from 'path';
 import path from 'path';
+import { unlink } from 'fs/promises';
 
 import { importNpzData } from '@/lib/import-npz';
+import { getLossLandscape } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -101,6 +103,21 @@ export async function POST(request: NextRequest) {
         const id = await importNpzData(data, sourceLabel, jsonFile, undefined, undefined, 'scan', filename);
 
         imported.push(id);
+
+        // Verify data is actually in DuckDB before deleting
+        const savedData = await getLossLandscape(id);
+        if (!savedData) {
+          console.warn(`Failed to verify data was saved to database (id=${id}), skipping file deletion for ${jsonFile}`);
+        } else {
+          // Delete the original JSON file after successful import and verification
+          try {
+            await unlink(jsonFile);
+            console.log(`Deleted original file after successful import to DuckDB: ${jsonFile}`);
+          } catch (deleteError: any) {
+            console.warn(`Failed to delete file ${jsonFile} after import:`, deleteError);
+            // Don't fail the request if deletion fails
+          }
+        }
       } catch (error: any) {
         console.error(`Failed to import ${jsonFile}:`, error);
         errors.push(`${path.basename(jsonFile)}: ${error.message}`);

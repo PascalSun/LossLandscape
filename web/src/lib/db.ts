@@ -84,6 +84,9 @@ function initializeSchema(conn: duckdb.Connection) {
   conn.run(`ALTER TABLE loss_landscape_data ADD COLUMN IF NOT EXISTS import_filename TEXT`);
   conn.run(`ALTER TABLE loss_landscape_data ADD COLUMN IF NOT EXISTS imported_at TIMESTAMP`);
   conn.run(`ALTER TABLE loss_landscape_data ADD COLUMN IF NOT EXISTS hessian TEXT`);
+  conn.run(`ALTER TABLE loss_landscape_data ADD COLUMN IF NOT EXISTS loss_line_1d TEXT`);
+  conn.run(`ALTER TABLE loss_landscape_data ADD COLUMN IF NOT EXISTS X_1d TEXT`);
+  conn.run(`ALTER TABLE loss_landscape_data ADD COLUMN IF NOT EXISTS baseline_loss_1d REAL`);
   
   // Create trajectory_points table
   conn.run(`
@@ -113,6 +116,9 @@ export interface LossLandscapeData {
   loss_grid_2d: number[][];
   loss_grid_3d?: number[][][];
   baseline_loss: number;
+  loss_line_1d?: number[]; // 1D loss line for 1D visualization
+  X_1d?: number[]; // 1D X axis for 1D visualization
+  baseline_loss_1d?: number; // Baseline loss for 1D visualization
   trajectory_data?: {
     traj_1: number[];
     traj_2: number[];
@@ -148,6 +154,8 @@ export async function saveLossLandscape(data: LossLandscapeData): Promise<number
   // Generate API should always create new records, even with same parameters,
   // because a config/run can generate multiple landscapes with different parameters
   // or the same parameters at different times.
+  // We include import_filename in the duplicate check to distinguish between different files
+  // from the same run/config, as they may have different data even if mode/grid_size are the same.
   if (!data.skipDuplicateCheck && (data.config_path || data.run_dir)) {
       const existingId = await new Promise<number | null>((resolve, reject) => {
         const sql = `
@@ -156,14 +164,16 @@ export async function saveLossLandscape(data: LossLandscapeData): Promise<number
             (config_path = ? OR (config_path IS NULL AND ? IS NULL)) AND
             (run_dir = ? OR (run_dir IS NULL AND ? IS NULL)) AND
             mode = ? AND
-            grid_size = ?
+            grid_size = ? AND
+            (import_filename = ? OR (import_filename IS NULL AND ? IS NULL))
           LIMIT 1
         `;
         conn.all(sql, 
           data.config_path || null, data.config_path || null,
           data.run_dir || null, data.run_dir || null,
           data.mode,
-          data.grid_size
+          data.grid_size,
+          data.import_filename || null, data.import_filename || null
         , (err: Error | null, rows: any[]) => {
             if (err) return reject(err);
             if (rows.length > 0) resolve(Number(rows[0].id));
@@ -180,9 +190,9 @@ export async function saveLossLandscape(data: LossLandscapeData): Promise<number
   return new Promise((resolve, reject) => {
     const sql = `
       INSERT INTO loss_landscape_data
-        (id, config_path, run_dir, mode, direction, grid_size, X, Y, Z, loss_grid_2d, loss_grid_3d, baseline_loss, trajectory_data, hessian, export_metadata, import_source, import_filename, imported_at)
+        (id, config_path, run_dir, mode, direction, grid_size, X, Y, Z, loss_grid_2d, loss_grid_3d, baseline_loss, loss_line_1d, X_1d, baseline_loss_1d, trajectory_data, hessian, export_metadata, import_source, import_filename, imported_at)
       VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING id
     `;
     const params = [
@@ -198,6 +208,9 @@ export async function saveLossLandscape(data: LossLandscapeData): Promise<number
         JSON.stringify(data.loss_grid_2d),
         data.loss_grid_3d ? JSON.stringify(data.loss_grid_3d) : null,
         data.baseline_loss,
+        data.loss_line_1d ? JSON.stringify(data.loss_line_1d) : null,
+        data.X_1d ? JSON.stringify(data.X_1d) : null,
+        data.baseline_loss_1d || null,
         data.trajectory_data ? JSON.stringify(data.trajectory_data) : null,
         data.hessian ? JSON.stringify(data.hessian) : null,
         data.export_metadata ? JSON.stringify(data.export_metadata) : null,
@@ -239,6 +252,9 @@ export async function getLossLandscape(id: number): Promise<LossLandscapeData | 
             loss_grid_2d: JSON.parse(row.loss_grid_2d),
             loss_grid_3d: row.loss_grid_3d ? JSON.parse(row.loss_grid_3d) : undefined,
             baseline_loss: row.baseline_loss,
+            loss_line_1d: row.loss_line_1d ? JSON.parse(row.loss_line_1d) : undefined,
+            X_1d: row.X_1d ? JSON.parse(row.X_1d) : undefined,
+            baseline_loss_1d: row.baseline_loss_1d || undefined,
             trajectory_data: row.trajectory_data ? JSON.parse(row.trajectory_data) : undefined,
             hessian: row.hessian ? JSON.parse(row.hessian) : undefined,
             export_metadata: row.export_metadata ? JSON.parse(row.export_metadata) : undefined,
@@ -274,6 +290,9 @@ export async function listLossLandscapes(): Promise<LossLandscapeData[]> {
               loss_grid_2d: JSON.parse(row.loss_grid_2d),
               loss_grid_3d: row.loss_grid_3d ? JSON.parse(row.loss_grid_3d) : undefined,
               baseline_loss: row.baseline_loss,
+              loss_line_1d: row.loss_line_1d ? JSON.parse(row.loss_line_1d) : undefined,
+              X_1d: row.X_1d ? JSON.parse(row.X_1d) : undefined,
+              baseline_loss_1d: row.baseline_loss_1d || undefined,
               trajectory_data: row.trajectory_data ? JSON.parse(row.trajectory_data) : undefined,
               hessian: row.hessian ? JSON.parse(row.hessian) : undefined,
               export_metadata: row.export_metadata ? JSON.parse(row.export_metadata) : undefined,

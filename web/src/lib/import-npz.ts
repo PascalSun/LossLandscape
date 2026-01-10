@@ -14,6 +14,9 @@ export interface NpzData {
   loss_grid_2d: number[][];
   loss_grid_3d?: number[][][];
   baseline_loss?: number;
+  loss_line_1d?: number[]; // 1D loss line for 1D visualization
+  X_1d?: number[]; // 1D X axis for 1D visualization
+  baseline_loss_1d?: number; // Baseline loss for 1D visualization
   mode?: string;
   direction?: string;
   grid_size?: number;
@@ -285,6 +288,9 @@ export async function importNpzData(
     loss_grid_2d: loss_grid_2d,
     loss_grid_3d: data.loss_grid_3d,
     baseline_loss: data.baseline_loss || 0,
+    loss_line_1d: data.loss_line_1d,
+    X_1d: data.X_1d,
+    baseline_loss_1d: data.baseline_loss_1d,
     trajectory_data: trajectoryData,
     hessian,
     export_metadata: metadataToStore || undefined,

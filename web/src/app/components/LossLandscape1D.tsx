@@ -331,7 +331,7 @@ export default function LossLandscape1D({
       ctx.rotate(-Math.PI / 2);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(useLog ? 'Loss (log₁₀)' : 'Loss', 0, 0);
+      ctx.fillText(useLog ? `${t.loss} (log₁₀)` : t.loss, 0, 0);
       ctx.restore();
     };
 
@@ -503,7 +503,7 @@ export default function LossLandscape1D({
           {/* Colorbar */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
             <div
-              title="Lower is better"
+              title={t.lowerIsBetter}
               style={{
                 width: 24,
                 height: 160,
@@ -546,7 +546,7 @@ export default function LossLandscape1D({
               background: isDark ? 'rgba(255,100,100,0.15)' : 'rgba(239,68,68,0.10)',
               border: isDark ? '1px solid rgba(255,100,100,0.3)' : '1px solid rgba(239,68,68,0.22)',
             }}>
-              <div style={{ fontSize: 10, opacity: 0.9, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>High Loss</div>
+              <div style={{ fontSize: 10, opacity: 0.9, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t.highLoss}</div>
               <div style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#ff6b6b' }}>{fmtLoss(stats.zMax)}</div>
             </div>
             
@@ -557,7 +557,7 @@ export default function LossLandscape1D({
               opacity: isDark ? 0.7 : 0.8,
               fontStyle: 'italic',
             }}>
-              ↓ Lower is better ↓
+              {t.lowerIsBetterArrow}
             </div>
             
             <div style={{ 
@@ -566,7 +566,7 @@ export default function LossLandscape1D({
               background: isDark ? 'rgba(100,255,150,0.15)' : 'rgba(16,185,129,0.10)',
               border: isDark ? '1px solid rgba(100,255,150,0.3)' : '1px solid rgba(16,185,129,0.22)',
             }}>
-              <div style={{ fontSize: 10, opacity: 0.9, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Low Loss</div>
+              <div style={{ fontSize: 10, opacity: 0.9, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t.lowLoss}</div>
               <div style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#51cf66' }}>{fmtLoss(stats.zMin)}</div>
             </div>
           </div>
@@ -589,7 +589,7 @@ export default function LossLandscape1D({
               borderRadius: 8,
               background: ui.surface,
             }}>
-              <span style={{ opacity: 0.9, fontWeight: 600 }}>📍 Baseline Loss</span>
+              <span style={{ opacity: 0.9, fontWeight: 600 }}>📍 {t.baselineLoss}</span>
               <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#fbbf24' }}>{fmtLoss(baselineLoss)}</span>
             </div>
           )}
@@ -612,7 +612,7 @@ export default function LossLandscape1D({
                 borderRadius: 2,
                 boxShadow: '0 0 8px rgba(255, 80, 80, 0.5)',
               }} />
-              <span style={{ opacity: 0.95, fontWeight: 600 }}>Training Trajectory</span>
+              <span style={{ opacity: 0.95, fontWeight: 600 }}>{t.trainingTrajectory}</span>
             </div>
           )}
           
@@ -625,7 +625,7 @@ export default function LossLandscape1D({
             borderRadius: 8,
             background: ui.surface,
           }}>
-            <span style={{ opacity: 0.9, fontWeight: 600 }}>Scale</span>
+            <span style={{ opacity: 0.9, fontWeight: 600 }}>{t.scale}</span>
             <button
               type="button"
               onClick={() => setUseLog((v) => !v)}
@@ -667,7 +667,7 @@ export default function LossLandscape1D({
                     : 'rgba(15,23,42,0.05)')
               }
             >
-              {useLog ? '📊 Log' : '📈 Linear'}
+              {useLog ? `📊 ${t.log}` : `📈 ${t.linear}`}
             </button>
           </div>
 
@@ -685,7 +685,7 @@ export default function LossLandscape1D({
               }}
               onMouseDown={(e) => e.stopPropagation()}
             >
-              <span style={{ opacity: 0.9, fontWeight: 600 }}>Epoch:</span>
+              <span style={{ opacity: 0.9, fontWeight: 600 }}>{t.epoch}:</span>
               <input
                 type="range"
                 min={minEpoch}

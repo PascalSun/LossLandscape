@@ -917,7 +917,7 @@ export default function LossVolumeRender3D({
               borderRadius: 8,
               background: ui.surface,
             }}>
-              <span style={{ opacity: 0.9, fontWeight: 600 }}>📍 Baseline Loss</span>
+              <span style={{ opacity: 0.9, fontWeight: 600 }}>📍 {t.baselineLoss}</span>
               <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#fbbf24' }}>{fmtLoss(baselineLoss)}</span>
             </div>
           )}
@@ -927,7 +927,7 @@ export default function LossVolumeRender3D({
               Color range (p2–p98): <span style={{ fontFamily: 'monospace' }}>{fmtLoss(minV)} → {fmtLoss(maxV)}</span>
             </div>
             <div>
-              Data min/max: <span style={{ fontFamily: 'monospace' }}>{fmtLoss(dataMinV)} → {fmtLoss(dataMaxV)}</span>
+              {t.dataMinMax} <span style={{ fontFamily: 'monospace' }}>{fmtLoss(dataMinV)} → {fmtLoss(dataMaxV)}</span>
             </div>
           </div>
 
@@ -990,7 +990,7 @@ export default function LossVolumeRender3D({
                       : 'rgba(15,23,42,0.05)')
               }
             >
-              {colorScale === 'log' ? '📊 Log' : '📈 Linear'}
+              {colorScale === 'log' ? `📊 ${t.log}` : `📈 ${t.linear}`}
             </button>
           </div>
           
@@ -1012,7 +1012,7 @@ export default function LossVolumeRender3D({
                 borderRadius: 2,
                 boxShadow: '0 0 8px rgba(255, 80, 80, 0.5)',
               }} />
-              <span style={{ opacity: 0.95, fontWeight: 600 }}>Training Trajectory</span>
+              <span style={{ opacity: 0.95, fontWeight: 600 }}>{t.trainingTrajectory}</span>
             </div>
           )}
 
@@ -1104,11 +1104,11 @@ export default function LossVolumeRender3D({
         >
           <div style={{ fontWeight: 800, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>{t.view3DVolume}</div>
           <div style={{ opacity: isDark ? 0.85 : 0.8, fontSize: 11, fontFamily: 'monospace', flexShrink: 0 }}>
-            {planes.length} slices
+            {planes.length} {t.slices}
           </div>
         </div>
         <div style={{ fontSize: 11, opacity: isDark ? 0.75 : 0.78, marginBottom: 8, lineHeight: 1.4, wordWrap: 'break-word', overflowWrap: 'break-word' }}>
-          Volume rendering: all slices blended together. Brighter = higher loss. Rotate to see 3D structure.
+          {t.volumeRenderingDesc}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '85px 1fr 55px', gap: 8, alignItems: 'center' }}>
           <div style={{ fontWeight: 700, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.opacity}</div>
@@ -1139,7 +1139,7 @@ export default function LossVolumeRender3D({
           <div style={{ textAlign: 'right', opacity: 0.9, fontFamily: 'monospace', fontSize: 11 }}>{step}</div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '85px 1fr 55px', gap: 8, alignItems: 'center' }}>
-          <div style={{ fontWeight: 700, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Threshold</div>
+          <div style={{ fontWeight: 700, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.threshold}</div>
           <input
             type="range"
             min={0}
@@ -1154,7 +1154,7 @@ export default function LossVolumeRender3D({
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '85px 1fr 55px', gap: 8, alignItems: 'center' }}>
-          <div style={{ fontWeight: 700, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Alpha curve</div>
+          <div style={{ fontWeight: 700, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.alphaCurve}</div>
           <input
             type="range"
             min={0.2}
@@ -1169,7 +1169,7 @@ export default function LossVolumeRender3D({
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '85px 1fr 55px', gap: 8, alignItems: 'center' }}>
-          <div style={{ fontWeight: 700, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Alpha floor</div>
+          <div style={{ fontWeight: 700, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.alphaFloor}</div>
           <input
             type="range"
             min={0}

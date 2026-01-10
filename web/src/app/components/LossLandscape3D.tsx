@@ -720,7 +720,7 @@ export default function LossLandscape3D({
   const dragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const posStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const norm = useMemo(() => buildNormalizer(X, Y, lossGrid, useLog), [X, Y, lossGrid, useLog]);
-  const zLabel = norm.useLogZ ? 'log10(loss)' : 'loss';
+  const zLabel = norm.useLogZ ? t.log10Loss : t.loss;
   const xLabelText = xLabel ?? 'α';
   const planeLabelText = planeLabel ?? 'β';
 
@@ -836,7 +836,7 @@ export default function LossLandscape3D({
           gap: 8,
         }}>
           <span>🌐</span>
-          <span>Loss Landscape (3D)</span>
+          <span>{t.lossLandscape3D}</span>
         </div>
         
         <div style={{ 
@@ -881,7 +881,7 @@ export default function LossLandscape3D({
               textAlign: 'center',
               lineHeight: 1.2,
             }}>
-              Hover for hint
+              {t.hoverForHint}
             </div>
           </div>
           
@@ -892,7 +892,7 @@ export default function LossLandscape3D({
               background: isDark ? 'rgba(255,100,100,0.15)' : 'rgba(239,68,68,0.10)',
               border: isDark ? '1px solid rgba(255,100,100,0.3)' : '1px solid rgba(239,68,68,0.22)',
             }}>
-              <div style={{ fontSize: 10, opacity: 0.9, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>High Loss</div>
+              <div style={{ fontSize: 10, opacity: 0.9, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t.highLoss}</div>
               <div style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#ff6b6b' }}>{fmtLoss(norm.stats.zMax)}</div>
             </div>
             
@@ -903,7 +903,7 @@ export default function LossLandscape3D({
               opacity: isDark ? 0.7 : 0.8,
               fontStyle: 'italic',
             }}>
-              ↓ Lower is better ↓
+              {t.lowerIsBetterArrow}
             </div>
             
             <div style={{ 
@@ -912,7 +912,7 @@ export default function LossLandscape3D({
               background: isDark ? 'rgba(100,255,150,0.15)' : 'rgba(16,185,129,0.10)',
               border: isDark ? '1px solid rgba(100,255,150,0.3)' : '1px solid rgba(16,185,129,0.22)',
             }}>
-              <div style={{ fontSize: 10, opacity: 0.9, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Low Loss</div>
+              <div style={{ fontSize: 10, opacity: 0.9, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t.lowLoss}</div>
               <div style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: '#51cf66' }}>{fmtLoss(norm.stats.zMin)}</div>
             </div>
           </div>
@@ -935,7 +935,7 @@ export default function LossLandscape3D({
               borderRadius: 8,
               background: ui.surface,
             }}>
-              <span style={{ opacity: 0.9, fontWeight: 600 }}>📍 Baseline Loss</span>
+              <span style={{ opacity: 0.9, fontWeight: 600 }}>📍 {t.baselineLoss}</span>
               <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#fbbf24' }}>{fmtLoss(baselineLoss)}</span>
             </div>
           )}
@@ -958,7 +958,7 @@ export default function LossLandscape3D({
                 borderRadius: 2,
                 boxShadow: '0 0 8px rgba(255, 80, 80, 0.5)',
               }} />
-              <span style={{ opacity: 0.95, fontWeight: 600 }}>Training Trajectory</span>
+              <span style={{ opacity: 0.95, fontWeight: 600 }}>{t.trainingTrajectory}</span>
             </div>
           )}
           
@@ -971,7 +971,7 @@ export default function LossLandscape3D({
             borderRadius: 8,
             background: ui.surface,
           }}>
-            <span style={{ opacity: 0.9, fontWeight: 600 }}>Scale</span>
+            <span style={{ opacity: 0.9, fontWeight: 600 }}>{t.scale}</span>
             <button
               type="button"
               onClick={() => setUseLog((v) => !v)}
@@ -1013,7 +1013,7 @@ export default function LossLandscape3D({
                     : 'rgba(15,23,42,0.05)')
               }
             >
-              {useLog ? '📊 Log' : '📈 Linear'}
+              {useLog ? `📊 ${t.log}` : `📈 ${t.linear}`}
             </button>
           </div>
 
@@ -1031,7 +1031,7 @@ export default function LossLandscape3D({
               }}
               onMouseDown={(e) => e.stopPropagation()}
             >
-              <span style={{ opacity: 0.9, fontWeight: 600 }}>Epoch:</span>
+              <span style={{ opacity: 0.9, fontWeight: 600 }}>{t.epoch}:</span>
               <input
                 type="range"
                 min={minEpoch}
@@ -1065,7 +1065,7 @@ export default function LossLandscape3D({
           opacity: isDark ? 0.6 : 0.75,
           lineHeight: 1.4,
         }}>
-          💡 <strong>Tip:</strong> Drag to rotate, scroll to zoom, hover to see values
+          💡 <strong>{t.tip3D}</strong>
         </div>
       </div>
 
@@ -1191,7 +1191,7 @@ export default function LossLandscape3D({
             letterSpacing: '0.08em',
             color: '#fbbf24',
           }}>
-            📍 Current Position
+            📍 {t.currentPosition}
           </div>
           <div style={{ display: 'grid', gap: 6, fontFamily: 'monospace', fontSize: 12 }}>
             <div style={{ 
@@ -1218,7 +1218,7 @@ export default function LossLandscape3D({
               padding: '4px 0',
               marginTop: 2,
             }}>
-              <span style={{ opacity: 0.8, fontWeight: 600 }}>Loss:</span> 
+              <span style={{ opacity: 0.8, fontWeight: 600 }}>{t.loss}:</span> 
               <span style={{ 
                 fontWeight: 700, 
                 color: hoverInfo.loss < (norm.stats.zMin + norm.stats.zMax) / 2 ? '#51cf66' : '#ff6b6b',

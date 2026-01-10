@@ -32,8 +32,8 @@ export default function Header() {
           type="button"
           onClick={toggleTheme}
           className="themeToggle"
-          title={theme === 'light' ? '切换到深色模式' : 'Switch to dark mode'}
-          aria-label={theme === 'light' ? '切换到深色模式' : 'Switch to dark mode'}
+          title={theme === 'light' ? t.themeToggleDark : t.themeToggleLight}
+          aria-label={theme === 'light' ? t.themeToggleDark : t.themeToggleLight}
         >
           {theme === 'light' ? '🌙' : '☀️'}
         </button>

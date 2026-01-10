@@ -243,6 +243,9 @@ export async function POST(request: NextRequest) {
       if (normalizedData.X && normalizedData.Y && normalizedData.loss_grid_2d) {
         const filename = path.basename(sourceFile);
         id = await importNpzData(normalizedData, sourceLabel, sourceFile, undefined, runPathInput, 'run', filename);
+        
+        // Note: We do NOT delete run files after import - they should be preserved
+        // as they are part of the run directory structure and may be needed for other purposes
       }
     } catch (e: any) {
       // Log but don't fail the request - database import is optional

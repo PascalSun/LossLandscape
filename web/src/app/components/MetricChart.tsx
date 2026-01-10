@@ -16,6 +16,7 @@ import {
   ReferenceLine
 } from 'recharts';
 import { useTheme } from '../theme';
+import { useI18n } from '../i18n';
 
 export type MetricChartPoint = number | null | undefined;
 export type MetricChartScale = 'linear' | 'log10';
@@ -53,6 +54,7 @@ export default function MetricChart({
   highlightEpoch,
 }: MetricChartProps) {
   const { theme } = useTheme();
+  const { t } = useI18n();
   const isDark = theme === 'dark';
 
   // Guard against ResponsiveContainer measuring before layout settles
@@ -123,7 +125,7 @@ export default function MetricChart({
   if (!chartData.length) {
     return (
         <div style={{ height, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isDark ? '#555' : '#aaa', fontSize: 12, border: `1px solid ${isDark?'#333':'#eee'}`, borderRadius: 8 }}>
-            No Data
+            {t.noData}
         </div>
     );
   }
@@ -214,7 +216,7 @@ export default function MetricChart({
                 }
                 return [formatted, name];
               }}
-              labelFormatter={(label) => `Epoch ${label}`}
+              labelFormatter={(label) => `${t.epoch} ${label}`}
             />
 
             {fillArea && (
@@ -274,7 +276,7 @@ export default function MetricChart({
             borderRadius: 8,
           }}
         >
-          Loading…
+          {t.loading}
         </div>
       )}
     </div>

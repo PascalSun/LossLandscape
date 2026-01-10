@@ -4,8 +4,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { generateLossLandscape, GenerateLandscapeOptions } from '@/lib/python-bridge';
-import { saveLossLandscape } from '@/lib/db';
+import { saveLossLandscape, getLossLandscape } from '@/lib/db';
 import { existsSync, readFileSync } from 'fs';
+import { unlink } from 'fs/promises';
 import path from 'path';
 
 export async function POST(request: NextRequest) {
@@ -106,12 +107,30 @@ export async function POST(request: NextRequest) {
           loss_grid_2d: data.loss_grid_2d,
           loss_grid_3d: data.loss_grid_3d,
           baseline_loss: data.baseline_loss,
+          loss_line_1d: data.loss_line_1d,
+          X_1d: data.X_1d,
+          baseline_loss_1d: data.baseline_loss_1d,
           trajectory_data,
           import_source: 'generate',
           imported_at: new Date(),
           skipDuplicateCheck: true, // Always create new record for generate API
         });
         console.log('[generate/route] Saved to database with id:', id);
+        
+        // Verify data is actually in DuckDB before deleting
+        const savedData = await getLossLandscape(id);
+        if (!savedData) {
+          console.warn(`[generate/route] Failed to verify data was saved to database (id=${id}), skipping file deletion`);
+        } else if (result.dataFile) {
+          // Delete the generated JSON file after successful save to database and verification
+          try {
+            await unlink(result.dataFile);
+            console.log(`[generate/route] Deleted generated file after successful save to DuckDB: ${result.dataFile}`);
+          } catch (deleteError: any) {
+            console.warn(`[generate/route] Failed to delete generated file ${result.dataFile}:`, deleteError);
+            // Don't fail the request if deletion fails
+          }
+        }
       } catch (saveError: any) {
         console.error('[generate/route] Failed to save to database:', saveError);
         // Continue even if save fails, but log the error

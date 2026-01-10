@@ -144,8 +144,8 @@ export default function Page() {
     setModalState({
       isOpen: true,
       type: 'confirm',
-      title: 'Delete Landscape',
-      message: 'Are you sure you want to delete this landscape? This action cannot be undone.',
+      title: t.deleteLandscape,
+      message: t.deleteConfirm,
       onConfirm: async () => {
         setDeletingId(id);
         try {
@@ -164,8 +164,8 @@ export default function Page() {
           setModalState({
             isOpen: true,
             type: 'alert',
-            title: 'Delete Failed',
-            message: `Failed to delete: ${e?.message || String(e)}`,
+            title: t.deleteFailed,
+            message: `${t.deleteFailedMessage}: ${e?.message || String(e)}`,
           });
         } finally {
           setDeletingId(null);
@@ -428,7 +428,7 @@ export default function Page() {
                   disabled={loading}
                   style={{ fontSize: 13, padding: '4px 12px', marginLeft: 8 }}
                 >
-                  Import
+                  {t.import}
                 </button>
               </div>
             ))}
@@ -452,7 +452,7 @@ export default function Page() {
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <div style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-            Previously generated landscapes
+            {t.previouslyGenerated}
           </div>
           <button
             className={`refreshButton ${historyLoading ? 'refreshing' : ''}`}
@@ -477,7 +477,7 @@ export default function Page() {
           </div>
         ) : history.length === 0 ? (
           <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px 0' }}>
-            No history found
+            {t.noHistoryFound}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -603,7 +603,7 @@ export default function Page() {
                           e.currentTarget.style.transform = 'scale(1)';
                         }
                       }}
-                      title="Delete"
+                      title={t.delete}
                     >
                       {deletingId === h.id ? (
                         <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
@@ -626,7 +626,7 @@ export default function Page() {
                         <span style={{ fontSize: 14, opacity: 0.7, flexShrink: 0, marginTop: 2 }}>📁</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                            Run Directory
+                            {t.runDirectory}
                           </div>
                           <div style={{ fontSize: 13, color: 'var(--text-primary)', wordBreak: 'break-all' }}>
                             {h.run_dir}
@@ -639,7 +639,7 @@ export default function Page() {
                         <span style={{ fontSize: 14, opacity: 0.7, flexShrink: 0, marginTop: 2 }}>📄</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                            File
+                            {t.file}
                           </div>
                           <div style={{ fontSize: 13, color: 'var(--text-primary)', wordBreak: 'break-all' }}>
                             {h.import_filename}
@@ -652,7 +652,7 @@ export default function Page() {
                         <span style={{ fontSize: 14, opacity: 0.7, flexShrink: 0, marginTop: 2 }}>🕒</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                            {h.imported_at ? 'Imported' : 'Created'}
+                            {h.imported_at ? t.imported : t.created}
                           </div>
                           <div style={{ fontSize: 13, color: 'var(--text-primary)' }}>
                             {h.imported_at 
@@ -681,10 +681,12 @@ export default function Page() {
                   <button
                     className="btn btn-sm btn-primary"
                     onClick={() => {
-                      if (h.run_dir) {
-                        loadFromRun(h.run_dir);
-                      } else if (h.id) {
+                      // Prefer loading from database by ID (standalone, no file needed)
+                      // Only fall back to loadFromRun if no ID is available
+                      if (h.id) {
                         loadFromId(h.id);
+                      } else if (h.run_dir) {
+                        loadFromRun(h.run_dir);
                       }
                     }}
                     disabled={loading || (!h.run_dir && !h.id)}
@@ -703,7 +705,7 @@ export default function Page() {
                       <polyline points="7 10 12 15 17 10" />
                       <line x1="12" y1="15" x2="12" y2="3" />
                     </svg>
-                    Load
+                    {t.load}
                   </button>
                 </div>
               );
@@ -719,7 +721,7 @@ export default function Page() {
     const isJson = fileName.endsWith('.json');
 
     if (!isJson) {
-      setUploadError('File must be a .json file');
+      setUploadError(t.fileMustBeJson);
       return;
     }
 
@@ -730,7 +732,7 @@ export default function Page() {
 
   async function handleUpload() {
     if (!uploadFile) {
-      setUploadError('Please select a file first');
+      setUploadError(t.pleaseSelectFile);
       return;
     }
 
@@ -750,7 +752,7 @@ export default function Page() {
       const json = await res.json();
 
       if (!res.ok) {
-        let errorMessage = json?.error || 'Upload failed';
+        let errorMessage = json?.error || t.uploadFailed;
         if (json?.validationErrors && Array.isArray(json.validationErrors)) {
           errorMessage += ': ' + json.validationErrors.join('; ');
         }
@@ -809,7 +811,7 @@ export default function Page() {
     return (
       <div>
         <div style={{ fontSize: 14, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.7 }}>
-          Upload a landscape JSON file. The file will be validated before import.
+          {t.uploadLandscapeHint}
         </div>
 
         {/* Drag and drop area */}
@@ -857,7 +859,7 @@ export default function Page() {
                 📄 {uploadFile.name}
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                Size: {(uploadFile.size / 1024 / 1024).toFixed(2)} MB
+                {t.size}: {(uploadFile.size / 1024 / 1024).toFixed(2)} MB
               </div>
               <div
                 style={{
@@ -873,20 +875,20 @@ export default function Page() {
                   setUploadSuccess(false);
                 }}
               >
-                Click to change file
+                {t.clickToChangeFile}
               </div>
             </div>
           ) : (
             <div>
               <div style={{ fontSize: 48, marginBottom: 16 }}>📤</div>
               <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8, color: 'var(--text-primary)' }}>
-                {isDragging ? 'Drop file here' : 'Drag & drop file here'}
+                {isDragging ? t.dropFileHere : t.dragDropFile}
               </div>
               <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                or click to browse
+                {t.orClickToBrowse}
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
-                Supports .json files only
+                {t.supportsJsonOnly}
               </div>
             </div>
           )}
@@ -921,7 +923,7 @@ export default function Page() {
               marginBottom: 16,
             }}
           >
-            ✓ File uploaded and imported successfully!
+            ✓ {t.fileUploadedSuccess}
           </div>
         )}
 
@@ -938,10 +940,10 @@ export default function Page() {
           {uploading ? (
             <>
               <span className="spinner" style={{ width: 14, height: 14, marginRight: 8 }} />
-              Uploading and importing...
+              {t.uploadingAndImporting}
             </>
           ) : (
-            'Upload & Import'
+            t.uploadAndImport
           )}
         </button>
       </div>
@@ -1062,7 +1064,7 @@ export default function Page() {
               background: getThemeColor('rgba(59, 130, 246, 0.03)', 'rgba(148, 163, 184, 0.05)'),
               borderRadius: 4
             }}>
-              [empty array]
+              {t.emptyArray}
             </span>
           );
         }
@@ -1076,7 +1078,7 @@ export default function Page() {
               borderRadius: 4,
               fontStyle: 'italic'
             }}>
-              Array({value.length} items)
+              {t.arrayItems}({value.length} {t.items})
             </span>
           );
         }
@@ -1243,11 +1245,26 @@ export default function Page() {
       return <span>{String(value)}</span>;
     };
 
+    const getSectionTitle = (key: string): string => {
+      const titleMap: Record<string, string> = {
+        'Experiment': t.sectionExperiment,
+        'Dataset': t.sectionDataset,
+        'Model': t.sectionModel,
+        'Training': t.sectionTraining,
+        'Training Statistics': t.sectionTrainingStatistics,
+        'Loss Function': t.sectionLossFunction,
+        'Landscape Generation': t.sectionLandscapeGeneration,
+        'System Information': t.sectionSystemInformation,
+      };
+      return titleMap[key] || (key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '));
+    };
+
     const renderSection = (title: string, content: any) => {
       if (!content) return null;
       
       const config = sectionConfig[title] || { icon: '📌', color: '#6b7280', gradient: 'linear-gradient(135deg, rgba(107, 114, 128, 0.1) 0%, rgba(107, 114, 128, 0.05) 100%)' };
       const isExpanded = expandedMetadataSections.has(title);
+      const translatedTitle = getSectionTitle(title);
       
       return (
         <div style={{ 
@@ -1320,7 +1337,7 @@ export default function Page() {
               margin: 0,
               flex: 1
             }}>
-              {title}
+              {translatedTitle}
             </h3>
             <div style={{
               width: 28,
@@ -1412,14 +1429,14 @@ export default function Page() {
               📋
             </div>
             <div>
-              <div>Run Metadata</div>
+              <div>{t.runMetadata}</div>
               <div style={{ 
                 fontSize: 14, 
                 fontWeight: 400,
                 color: 'var(--text-muted)', 
                 marginTop: 4
               }}>
-                Comprehensive information about this experiment
+                {t.comprehensiveInfo}
               </div>
             </div>
           </div>
@@ -1458,7 +1475,7 @@ export default function Page() {
               zIndex: 1
             }}>
               <span style={{ fontSize: 24 }}>📝</span>
-              <span>Summary</span>
+              <span>{t.summary}</span>
             </div>
             <div style={{ 
               fontSize: 15, 
@@ -1487,7 +1504,7 @@ export default function Page() {
             gap: 8
           }}>
             <span style={{ fontSize: 20 }}>📋</span>
-            <span>Overview</span>
+            <span>{t.overview}</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {renderSection('Experiment', metadata.experiment)}
@@ -1509,7 +1526,7 @@ export default function Page() {
             gap: 8
           }}>
             <span style={{ fontSize: 20 }}>🎯</span>
-            <span>Factors Directly Affecting Loss Landscape</span>
+            <span>{t.factorsAffectingLoss}</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {renderSection('Training', metadata.training)}
@@ -1798,7 +1815,7 @@ export default function Page() {
     
     if (data.loss_line_1d && data.loss_line_1d.length > 0) {
       availableViews.push(
-        { key: '1d', label: '1D', requires3D: false, desc: '1D Loss Landscape visualization' }
+        { key: '1d', label: t.view1D, requires3D: false, desc: t.view1DDesc }
       );
     }
     
@@ -1818,14 +1835,14 @@ export default function Page() {
     if (data.hessian) {
       const isSnapshot = Array.isArray(data?.hessian?.epochs) && data.hessian.epochs.length <= 1;
       availableViews.push(
-        { key: 'hessian', label: 'Hessian', requires3D: false, desc: isSnapshot ? 'Hessian snapshot (no trajectory)' : 'Hessian metrics over training (λmax, Trace, Spectrum)' }
+        { key: 'hessian', label: t.viewHessian, requires3D: false, desc: isSnapshot ? t.viewHessianSnapshot : t.viewHessianMetrics }
       );
     }
     
     // Always add metadata view if data exists
     if (data.metadata) {
       availableViews.push(
-        { key: 'metadata', label: 'Metadata', requires3D: false, desc: 'View comprehensive run metadata' }
+        { key: 'metadata', label: t.viewMetadata, requires3D: false, desc: t.viewMetadataDesc }
       );
     }
     
@@ -1906,19 +1923,19 @@ export default function Page() {
               className={`sidebarTab ${activeTab === 'run' ? 'active' : ''}`}
               onClick={() => setActiveTab('run')}
             >
-              Run
+              {t.tabRun}
             </button>
             <button
               className={`sidebarTab ${activeTab === 'History' ? 'active' : ''}`}
               onClick={() => setActiveTab('History')}
             >
-              History
+              {t.tabHistory}
             </button>
             <button
               className={`sidebarTab ${activeTab === 'upload' ? 'active' : ''}`}
               onClick={() => setActiveTab('upload')}
             >
-              Upload
+              {t.tabUpload}
             </button>
           </div>
           <div className="sidebarContent">
@@ -1935,7 +1952,7 @@ export default function Page() {
             </span>
             {data && (
               <div className="badge">
-                {data.loss_grid_3d ? '3D' : '2D'} · {t.grid} {data.grid_size || data.gridSize || 'N/A'}
+                {data.loss_grid_3d ? '3D' : '2D'} · {t.grid} {data.grid_size || data.gridSize || t.notAvailable}
               </div>
             )}
           </div>
@@ -2100,40 +2117,40 @@ export default function Page() {
                 overflowY: 'auto'
               }}>
                 <div style={{ paddingBottom: 8, borderBottom: '1px solid var(--border)' }}>
-                  <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Metrics</h3>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0' }}>Training progression</p>
+                  <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>{t.metrics}</h3>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0' }}>{t.trainingProgression}</p>
                 </div>
 
                 {hasTrain && (
                   <MetricChart
-                    title="Train Loss"
+                    title={t.trainLoss}
                     color="#3b82f6" // blue-500
                     epochs={epochs}
                     values={trainLosses}
                     height={140}
-                    valueLabel="train"
+                    valueLabel={t.valueLabelTrain}
                   />
                 )}
 
                 {hasVal && (
                   <MetricChart
-                    title="Validation Loss"
+                    title={t.validationLoss}
                     color="#f59e0b" // amber-500
                     epochs={epochs}
                     values={valLosses}
                     height={140}
-                    valueLabel="val"
+                    valueLabel={t.valueLabelVal}
                   />
                 )}
 
                 {hasLandscape && (
                   <MetricChart
-                    title="Landscape Loss"
+                    title={t.landscapeLoss}
                     color="#10b981" // emerald-500
                     epochs={epochs}
                     values={landscapeSeries}
                     height={140}
-                    valueLabel="land"
+                    valueLabel={t.valueLabelLand}
                   />
                 )}
               </div>
@@ -2240,8 +2257,8 @@ export default function Page() {
               <div className="emptyState">
                 <div className="emptyStateIcon">📋</div>
                 <div>
-                  <h3 className="emptyStateTitle">No Metadata Available</h3>
-                  <p className="emptyStateDesc">This run does not have metadata information.</p>
+                  <h3 className="emptyStateTitle">{t.noMetadataAvailable}</h3>
+                  <p className="emptyStateDesc">{t.noMetadataInfo}</p>
                 </div>
               </div>
             )
@@ -2262,8 +2279,8 @@ export default function Page() {
               <div className="emptyState">
                 <div className="emptyStateIcon">📉</div>
                 <div>
-                  <h3 className="emptyStateTitle">No Hessian Data Available</h3>
-                  <p className="emptyStateDesc">This run does not have Hessian metrics.</p>
+                  <h3 className="emptyStateTitle">{t.noHessianDataAvailable}</h3>
+                  <p className="emptyStateDesc">{t.noHessianMetrics}</p>
                 </div>
               </div>
             )
@@ -2307,8 +2324,8 @@ export default function Page() {
                     <div className="emptyState">
                       <div className="emptyStateIcon">📊</div>
                       <div>
-                        <h3 className="emptyStateTitle">No 1D Data Available</h3>
-                        <p className="emptyStateDesc">This run does not have 1D loss landscape data.</p>
+                        <h3 className="emptyStateTitle">{t.no1DDataAvailable}</h3>
+                        <p className="emptyStateDesc">{t.no1DLossData}</p>
                       </div>
                     </div>
                   );
@@ -2842,7 +2859,7 @@ export default function Page() {
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, opacity: 0.85 }}>
-                  <span style={{ fontWeight: 600 }}>Axis</span>
+                  <span style={{ fontWeight: 600 }}>{t.axis}</span>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     <button
                       type="button"
@@ -2874,7 +2891,7 @@ export default function Page() {
                         cursor: 'pointer',
                       }}
                     >
-                      α-slice
+                      {t.alphaSlice}
                     </button>
                     <button
                       type="button"
@@ -2890,7 +2907,7 @@ export default function Page() {
                         cursor: 'pointer',
                       }}
                     >
-                      β-slice
+                      {t.betaSlice}
                     </button>
                   </div>
                 </div>
@@ -2899,7 +2916,7 @@ export default function Page() {
                 
                 <div onMouseDown={(e) => e.stopPropagation()}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 11, opacity: 0.8, fontFamily: 'monospace' }}>
-                    <span style={{ fontWeight: 600 }}>Slice Index</span>
+                    <span style={{ fontWeight: 600 }}>{t.sliceIndex}</span>
                     <span>{sliceIndex} / {sliceMeta.nz - 1}</span>
                   </div>
                   <input
@@ -2920,10 +2937,10 @@ export default function Page() {
                     {sliceAxis === 'gamma'
                       ? (sliceMeta.zVals[sliceIndex] !== undefined
                           ? `${t.gamma} = ${sliceMeta.zVals[sliceIndex].toFixed(3)}`
-                          : `${t.gamma} idx=${sliceIndex}`)
+                          : `${t.gammaIdx}=${sliceIndex}`)
                       : sliceAxis === 'alpha'
-                        ? `α idx=${sliceIndex}`
-                        : `β idx=${sliceIndex}`}
+                        ? `${t.alphaIdx}=${sliceIndex}`
+                        : `${t.betaIdx}=${sliceIndex}`}
                   </div>
                 </div>
               </div>
@@ -2941,8 +2958,8 @@ export default function Page() {
         type={modalState.type}
         title={modalState.title}
         message={modalState.message}
-        confirmText={modalState.type === 'confirm' ? 'Delete' : 'OK'}
-        cancelText="Cancel"
+        confirmText={modalState.type === 'confirm' ? t.delete : t.modalOK}
+        cancelText={t.modalCancel}
         onConfirm={modalState.onConfirm}
         confirmButtonStyle={
           modalState.type === 'confirm'
