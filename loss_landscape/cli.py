@@ -2,10 +2,11 @@
 Command Line Interface for LossLandscape
 """
 
-import click
 import json
-from loguru import logger
+
+import click
 import numpy as np
+from loguru import logger
 
 
 @click.group()

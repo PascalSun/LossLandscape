@@ -1,9 +1,10 @@
+import math
+from typing import List
+
+import numpy as np
 import torch
 import torch.nn as nn
-from typing import List
 from loguru import logger
-import math
-import numpy as np
 
 
 class HessianCalculator:
@@ -78,7 +79,9 @@ class HessianCalculator:
 
         return total_hvp
 
-    def compute_top_eigenvalues(self, k: int = 1, max_iter: int = 20, tol: float = 1e-3) -> List[float]:
+    def compute_top_eigenvalues(
+        self, k: int = 1, max_iter: int = 20, tol: float = 1e-3
+    ) -> List[float]:
         """
         Compute top k eigenvalues using deflation and power iteration.
         Used for small k (e.g., 1 or 2). For larger k, consider Lanczos.
@@ -175,7 +178,10 @@ class HessianCalculator:
             alphas.append(alpha)
 
             # w = w - alpha_j * v_j - beta_{j-1} * v_{j-1}
-            w = [w_p - alpha * v_c_p - beta_prev * v_p_p for w_p, v_c_p, v_p_p in zip(w, v_curr, v_prev)]
+            w = [
+                w_p - alpha * v_c_p - beta_prev * v_p_p
+                for w_p, v_c_p, v_p_p in zip(w, v_curr, v_prev)
+            ]
 
             # beta_j = ||w||
             beta = math.sqrt(sum(torch.sum(t**2).item() for t in w))

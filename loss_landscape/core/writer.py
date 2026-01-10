@@ -12,11 +12,12 @@ LossLandscapeWriter - Loss Landscape 记录器
 - 所有与"这次采样"相关的参数都在方法调用时传入
 """
 
+from pathlib import Path
+from typing import Any, Callable, Dict, Optional, Tuple, Union
+
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
-from typing import Optional, Callable, Tuple, Dict, Any, Union
-from pathlib import Path
 from loguru import logger
 
 from .explorer import Explorer
@@ -143,7 +144,9 @@ class LossLandscapeWriter:
         """
         return self._landscape_directions
 
-    def _compute_pca_directions(self, model: nn.Module, device: torch.device) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _compute_pca_directions(
+        self, model: nn.Module, device: torch.device
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         从 checkpoints 中计算 PCA 方向。
 
@@ -333,7 +336,9 @@ class LossLandscapeWriter:
             val_loss: 验证 loss（可选）
         """
         model_state = {
-            name: param.data.cpu().clone() for name, param in model.named_parameters() if param.requires_grad
+            name: param.data.cpu().clone()
+            for name, param in model.named_parameters()
+            if param.requires_grad
         }
 
         self._checkpoints.append(
@@ -394,7 +399,9 @@ class LossLandscapeWriter:
 
         # 保存基准模型权重
         base_state_dict = {
-            name: param.data.cpu().clone() for name, param in model.named_parameters() if param.requires_grad
+            name: param.data.cpu().clone()
+            for name, param in model.named_parameters()
+            if param.requires_grad
         }
 
         # 创建 Explorer
@@ -438,7 +445,9 @@ class LossLandscapeWriter:
                         dir3 = explorer._generate_third_direction(dir1, dir2)
                         directions = (dir1, dir2, dir3)
                     else:
-                        raise ValueError("fixed 模式需要方向向量。请先调用 sample_landscape() 或提供 directions 参数")
+                        raise ValueError(
+                            "fixed 模式需要方向向量。请先调用 sample_landscape() 或提供 directions 参数"
+                        )
                 result = explorer.build_trajectory(mode="fixed", directions=directions)
             else:
                 result = explorer.build_trajectory(mode="pca")

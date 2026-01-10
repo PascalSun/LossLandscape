@@ -10,9 +10,8 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
 from loguru import logger
-
+from torch.utils.data import DataLoader, TensorDataset
 
 # ========== 示例 1: 一行代码 ==========
 
@@ -74,8 +73,9 @@ def example_2_with_regularizer():
 
 def example_3_custom_loss():
     """使用 Physics-Informed Loss 函数"""
-    from loss_landscape import LossLandscapeWriter
     import torch.nn.functional as F
+
+    from loss_landscape import LossLandscapeWriter
 
     model = nn.Sequential(nn.Linear(10, 32), nn.ReLU(), nn.Linear(32, 1))
 
@@ -165,7 +165,9 @@ def example_5_comparison():
     model_a = nn.Sequential(nn.Linear(10, 16), nn.ReLU(), nn.Linear(16, 1))
 
     # 模型 B: 较深的网络
-    model_b = nn.Sequential(nn.Linear(10, 32), nn.ReLU(), nn.Linear(32, 32), nn.ReLU(), nn.Linear(32, 1))
+    model_b = nn.Sequential(
+        nn.Linear(10, 32), nn.ReLU(), nn.Linear(32, 32), nn.ReLU(), nn.Linear(32, 1)
+    )
 
     X = torch.randn(100, 10)
     y = torch.randn(100, 1)

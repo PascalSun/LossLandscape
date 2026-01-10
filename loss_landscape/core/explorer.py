@@ -3,11 +3,12 @@ Explorer - 核心上下文管理器，用于安全地扰动模型参数并计算
 """
 
 import copy
+import warnings
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
+
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
-from typing import Callable, Optional, Tuple, Dict, Any, TYPE_CHECKING
-import warnings
 from loguru import logger
 
 if TYPE_CHECKING:
@@ -169,7 +170,9 @@ class Explorer:
 
         return state_dict
 
-    def _apply_perturbation(self, direction1: torch.Tensor, direction2: torch.Tensor, alpha: float, beta: float):
+    def _apply_perturbation(
+        self, direction1: torch.Tensor, direction2: torch.Tensor, alpha: float, beta: float
+    ):
         """
         应用扰动到模型参数。
 
@@ -231,7 +234,9 @@ class Explorer:
                 # 如果有基准参数，应用 Li et al. 的 scaling: * ||w||
                 if base_params is not None:
                     # base_params 在 CPU，需要移动到 device
-                    layer_w = base_params[idx : idx + size].to(layer_direction.device).reshape(shape)
+                    layer_w = (
+                        base_params[idx : idx + size].to(layer_direction.device).reshape(shape)
+                    )
                     w_norm = torch.norm(layer_w, p="fro")
                     scale *= w_norm
 
@@ -442,7 +447,9 @@ class Explorer:
 
                 computed += 1
                 if verbose and computed % (total_points // 10) == 0:
-                    logger.info(f"Progress: {computed}/{total_points} ({100*computed/total_points:.1f}%)")
+                    logger.info(
+                        f"Progress: {computed}/{total_points} ({100*computed/total_points:.1f}%)"
+                    )
 
         # 恢复原始参数
         self._restore_parameters()
@@ -463,7 +470,9 @@ class Explorer:
             self.storage.save_surface(result)
 
         if verbose:
-            logger.info(f"Surface generation completed. Loss range: [{loss_grid.min():.6f}, {loss_grid.max():.6f}]")
+            logger.info(
+                f"Surface generation completed. Loss range: [{loss_grid.min():.6f}, {loss_grid.max():.6f}]"
+            )
 
         return result
 
@@ -567,7 +576,9 @@ class Explorer:
             self.storage.save_line(result)
 
         if verbose:
-            logger.info(f"[1D] Line generation completed. Loss range: [{loss_line.min():.6f}, {loss_line.max():.6f}]")
+            logger.info(
+                f"[1D] Line generation completed. Loss range: [{loss_line.min():.6f}, {loss_line.max():.6f}]"
+            )
 
         return result
 
@@ -664,8 +675,14 @@ class Explorer:
                     loss_grid[i, j, k] = loss
 
                     computed += 1
-                    if verbose and total_points >= 10 and computed % max(1, total_points // 10) == 0:
-                        logger.info(f"[3D] Progress: {computed}/{total_points} ({100 * computed / total_points:.1f}%)")
+                    if (
+                        verbose
+                        and total_points >= 10
+                        and computed % max(1, total_points // 10) == 0
+                    ):
+                        logger.info(
+                            f"[3D] Progress: {computed}/{total_points} ({100 * computed / total_points:.1f}%)"
+                        )
 
         # 恢复原始参数
         self._restore_parameters()
@@ -690,7 +707,8 @@ class Explorer:
 
         if verbose:
             logger.info(
-                f"[3D] Volume generation completed. Loss range: " f"[{loss_grid.min():.6f}, {loss_grid.max():.6f}]"
+                f"[3D] Volume generation completed. Loss range: "
+                f"[{loss_grid.min():.6f}, {loss_grid.max():.6f}]"
             )
 
         return result
@@ -772,7 +790,9 @@ class Explorer:
                     dir3 = self._generate_third_direction(dir1, dir2)
                     self._fixed_directions_3d = (dir1, dir2, dir3)
                 else:
-                    raise ValueError("固定模式需要方向向量。请先调用build_surface()/build_volume或提供directions参数")
+                    raise ValueError(
+                        "固定模式需要方向向量。请先调用build_surface()/build_volume或提供directions参数"
+                    )
             else:
                 if len(directions) == 3:
                     dir1, dir2, dir3 = directions
@@ -813,7 +833,9 @@ class Explorer:
         elif mode == "pca":
             # PCA降维
             if len(self._all_weights_for_pca) == 0:
-                raise ValueError("PCA模式需要收集权重。请确保在log_position之前设置trajectory_mode='pca'")
+                raise ValueError(
+                    "PCA模式需要收集权重。请确保在log_position之前设置trajectory_mode='pca'"
+                )
 
             # 堆叠所有权重
             weights_matrix = torch.stack(self._all_weights_for_pca).numpy()
@@ -904,7 +926,9 @@ class Explorer:
 
         base_params = self._flattened_params.to(self.device)
 
-        for i, (epoch, weight_offset) in enumerate(zip(self._trajectory_epochs, self._trajectory_weights)):
+        for i, (epoch, weight_offset) in enumerate(
+            zip(self._trajectory_epochs, self._trajectory_weights)
+        ):
             if verbose:
                 logger.info(f"Hessian analysis: Epoch {epoch} ({i+1}/{total})")
 
@@ -919,7 +943,9 @@ class Explorer:
                 # k=40, max_iter=40 gives us ~40 Ritz values approximating the spectrum
                 eigs = hessian_calc.compute_spectrum_lanczos(k=40, max_iter=40)
             except Exception as e:
-                logger.warning(f"Lanczos failed at epoch {epoch}: {e}, falling back to Power Iteration")
+                logger.warning(
+                    f"Lanczos failed at epoch {epoch}: {e}, falling back to Power Iteration"
+                )
                 eigs = hessian_calc.compute_top_eigenvalues(k=top_k)
 
             # Max Eigenvalue (Sharpness)

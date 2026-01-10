@@ -2,9 +2,10 @@
 LandscapeStorage - DuckDB数据持久化模块
 """
 
-import duckdb
 import os
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
+import duckdb
 import numpy as np
 
 
@@ -128,7 +129,9 @@ class LandscapeStorage:
                 self.conn.commit()
                 print(f"[LandscapeStorage] Saved {len(data)} 2D surface points to database")
             else:
-                print(f"[LandscapeStorage] WARNING: No data to save for surface (grid_size={grid_size})")
+                print(
+                    f"[LandscapeStorage] WARNING: No data to save for surface (grid_size={grid_size})"
+                )
         except Exception as e:
             print(f"[LandscapeStorage] ERROR saving surface data: {e}")
             import traceback
@@ -240,7 +243,9 @@ class LandscapeStorage:
                 self.conn.commit()
                 print(f"[LandscapeStorage] Saved {len(data)} 1D line points to database")
             else:
-                print(f"[LandscapeStorage] WARNING: No data to save for line (grid_size={grid_size})")
+                print(
+                    f"[LandscapeStorage] WARNING: No data to save for line (grid_size={grid_size})"
+                )
         except Exception as e:
             print(f"[LandscapeStorage] ERROR saving line data: {e}")
             import traceback
@@ -459,7 +464,9 @@ class LandscapeStorage:
             # Prefer the true baseline loss saved by Explorer, if available.
             baseline_loss_2d = None
             try:
-                row = self.conn.execute("SELECT value FROM metadata WHERE key = 'baseline_loss_2d'").fetchone()
+                row = self.conn.execute(
+                    "SELECT value FROM metadata WHERE key = 'baseline_loss_2d'"
+                ).fetchone()
                 if row and row[0] is not None:
                     baseline_loss_2d = float(row[0])
             except Exception:
@@ -498,7 +505,9 @@ class LandscapeStorage:
             # Prefer the true baseline loss saved by Explorer, if available.
             baseline_loss_1d = None
             try:
-                row = self.conn.execute("SELECT value FROM metadata WHERE key = 'baseline_loss_1d'").fetchone()
+                row = self.conn.execute(
+                    "SELECT value FROM metadata WHERE key = 'baseline_loss_1d'"
+                ).fetchone()
                 if row and row[0] is not None:
                     baseline_loss_1d = float(row[0])
             except Exception:
@@ -533,7 +542,9 @@ class LandscapeStorage:
                 # 如果只有1D数据，则使用X和Y字段（向后兼容）
                 result["X"] = X_1d.tolist()
                 result["baseline_loss"] = (
-                    float(baseline_loss_1d) if baseline_loss_1d is not None else float(loss_line.min())
+                    float(baseline_loss_1d)
+                    if baseline_loss_1d is not None
+                    else float(loss_line.min())
                 )
                 result["grid_size"] = grid_size
 
@@ -630,7 +641,9 @@ class LandscapeStorage:
                 "epochs": hessian_df["epoch"].tolist(),
                 "max_eigenvalue": hessian_df["max_eigenvalue"].tolist(),
                 "trace": hessian_df["trace"].tolist(),
-                "top_eigenvalues": [json.loads(x) if x else [] for x in hessian_df["top_eigenvalues"]],
+                "top_eigenvalues": [
+                    json.loads(x) if x else [] for x in hessian_df["top_eigenvalues"]
+                ],
             }
 
         # 在导出前清洗 NaN/Inf，避免前端 JSON.parse 失败

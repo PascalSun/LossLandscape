@@ -17,16 +17,18 @@
 4) mse loss (no train / no trajectory)
 """
 
+import os
+import platform
+from datetime import datetime
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
-from loss_landscape import Explorer, LandscapeStorage
 from loguru import logger
-import numpy as np
-import os
-from datetime import datetime
-import platform
+from torch.utils.data import DataLoader, Dataset
+
+from loss_landscape import Explorer, LandscapeStorage
 
 try:
     import psutil
@@ -279,7 +281,9 @@ def train_model(
 
         # Record trajectory position + true (epoch-average) train loss and val loss for comparison in the UI.
         if explorer is not None:
-            explorer.log_position(epoch=epoch, verbose=False, loss=train_eval_loss, val_loss=val_loss)
+            explorer.log_position(
+                epoch=epoch, verbose=False, loss=train_eval_loss, val_loss=val_loss
+            )
 
         if (epoch + 1) % 10 == 0:
             val_str = f", Val Loss: {val_loss:.6f}" if val_loss is not None else ""
@@ -485,7 +489,9 @@ def generate_landscape(
         system_info["cudnn_version"] = torch.backends.cudnn.version()
         if torch.cuda.device_count() > 0:
             system_info["gpu_name"] = torch.cuda.get_device_name(0)
-            system_info["gpu_memory_gb"] = round(torch.cuda.get_device_properties(0).total_memory / (1024**3), 2)
+            system_info["gpu_memory_gb"] = round(
+                torch.cuda.get_device_properties(0).total_memory / (1024**3), 2
+            )
     else:
         system_info["cuda_available"] = False
 
@@ -514,12 +520,20 @@ def generate_landscape(
         if training_stats:
             full_metadata["training_statistics"] = {
                 "initial_loss": (
-                    float(training_stats["initial_loss"]) if training_stats["initial_loss"] is not None else None
+                    float(training_stats["initial_loss"])
+                    if training_stats["initial_loss"] is not None
+                    else None
                 ),
                 "final_loss": (
-                    float(training_stats["final_loss"]) if training_stats["final_loss"] is not None else None
+                    float(training_stats["final_loss"])
+                    if training_stats["final_loss"] is not None
+                    else None
                 ),
-                "min_loss": (float(training_stats["min_loss"]) if training_stats["min_loss"] != float("inf") else None),
+                "min_loss": (
+                    float(training_stats["min_loss"])
+                    if training_stats["min_loss"] != float("inf")
+                    else None
+                ),
                 "min_loss_epoch": training_stats["min_loss_epoch"],
                 "loss_reduction": (
                     float(training_stats["initial_loss"] - training_stats["final_loss"])
@@ -539,9 +553,13 @@ def generate_landscape(
                 ),
                 # Export per-epoch LR so the frontend can draw the stability boundary 2/η.
                 # (η is the learning rate.)
-                "learning_rate_history": [float(x) for x in (training_stats.get("learning_rate_history") or [])],
+                "learning_rate_history": [
+                    float(x) for x in (training_stats.get("learning_rate_history") or [])
+                ],
                 # Optional: keep val loss history for contextual overlays if needed
-                "val_loss_history": [float(x) for x in (training_stats.get("val_loss_history") or [])],
+                "val_loss_history": [
+                    float(x) for x in (training_stats.get("val_loss_history") or [])
+                ],
             }
 
         storage.save_metadata(full_metadata)
@@ -558,7 +576,11 @@ def generate_landscape(
     ) as explorer:
 
         # 1. 恢复轨迹数据（用于 build_trajectory）
-        if trajectory_weights is not None and trajectory_epochs is not None and trajectory_base_weights is not None:
+        if (
+            trajectory_weights is not None
+            and trajectory_epochs is not None
+            and trajectory_base_weights is not None
+        ):
             # 计算当前权重(W_final)相对于训练基准(W_init)的偏移
             # model此时处于 eval 模式，且加载了训练后的权重 (W_final)
             current_flat = []
@@ -577,7 +599,9 @@ def generate_landscape(
             # 如果 trajectory_weights 是 [W_t - W_init]，那么最后一个点应该是 W_final - W_init
             last_traj_offset = trajectory_weights[-1]
             diff = (last_traj_offset - base_offset).abs().max().item()
-            logger.info(f"Trajectory endpoint check: max diff between traj[-1] and (W_final-W_init) = {diff:.6f}")
+            logger.info(
+                f"Trajectory endpoint check: max diff between traj[-1] and (W_final-W_init) = {diff:.6f}"
+            )
 
             # 调整轨迹： Explorer 期望 _trajectory_weights 存储的是 (W_t - W_final)
             # 我们传入的 trajectory_weights 是 (W_t - W_init)
@@ -605,20 +629,30 @@ def generate_landscape(
                     # Epoch -1 (init): use initial_loss if available
                     if ep == -1:
                         init_loss = training_stats.get("initial_loss")
-                        restored_train_losses.append(float(init_loss) if init_loss is not None else None)
+                        restored_train_losses.append(
+                            float(init_loss) if init_loss is not None else None
+                        )
                         # For val, we don't usually have pre-init val loss unless we calculated it
                         restored_val_losses.append(None)
                     elif isinstance(ep, int) and 0 <= ep < len(train_hist):
-                        restored_train_losses.append(float(train_hist[ep]) if train_hist[ep] is not None else None)
+                        restored_train_losses.append(
+                            float(train_hist[ep]) if train_hist[ep] is not None else None
+                        )
                         restored_val_losses.append(
-                            float(val_hist[ep]) if ep < len(val_hist) and val_hist[ep] is not None else None
+                            float(val_hist[ep])
+                            if ep < len(val_hist) and val_hist[ep] is not None
+                            else None
                         )
                     elif ep == len(train_hist):  # Final epoch marker might be equal to length
                         # Use final loss
                         final_loss = training_stats.get("final_loss")
-                        restored_train_losses.append(float(final_loss) if final_loss is not None else None)
+                        restored_train_losses.append(
+                            float(final_loss) if final_loss is not None else None
+                        )
                         final_val = training_stats.get("final_val_loss")
-                        restored_val_losses.append(float(final_val) if final_val is not None else None)
+                        restored_val_losses.append(
+                            float(final_val) if final_val is not None else None
+                        )
                     else:
                         restored_train_losses.append(None)
                         restored_val_losses.append(None)
@@ -639,7 +673,9 @@ def generate_landscape(
         )
 
         # 2. 生成2D Surface
-        directions_desc = "PCA first two directions" if directions_2d is not None else "random directions"
+        directions_desc = (
+            "PCA first two directions" if directions_2d is not None else "random directions"
+        )
         logger.info(f"\n[2/5] Generating 2D Loss Landscape surface (using {directions_desc})...")
         result_2d = explorer.build_surface(
             grid_size=grid_size_2d,
@@ -649,7 +685,9 @@ def generate_landscape(
         )
 
         # 3. 生成3D Volume
-        directions_3d_desc = "PCA three directions" if directions_3d is not None else "random directions"
+        directions_3d_desc = (
+            "PCA three directions" if directions_3d is not None else "random directions"
+        )
         logger.info(f"\n[3/5] Generating 3D Loss Volume (using {directions_3d_desc})...")
         result_3d = explorer.build_volume(
             grid_size=grid_size_3d,
@@ -668,7 +706,9 @@ def generate_landscape(
 
             # 5. 计算 Hessian (仅当有轨迹时)
             logger.info("\n[5/6] Analyzing Hessian along trajectory (Top-5 Eigs + Trace)...")
-            explorer.build_hessian_trajectory(top_k=5, max_batches=5)  # Limit batches for speed in demo
+            explorer.build_hessian_trajectory(
+                top_k=5, max_batches=5
+            )  # Limit batches for speed in demo
             logger.info("✓ Hessian analysis completed")
 
         else:
@@ -761,7 +801,9 @@ def main():
 
         # IMPORTANT: Do NOT use 'with Explorer(...)', because __exit__ restores the model to its original state!
         # We want the trained model weights to persist after this block so we can generate the landscape around the solution.
-        temp_explorer = Explorer(model, mse_loss_fn, eval_loader, device=device, storage=None, model_mode="train")
+        temp_explorer = Explorer(
+            model, mse_loss_fn, eval_loader, device=device, storage=None, model_mode="train"
+        )
         temp_explorer._backup_parameters()  # Initialize internal state (flattened params) from current (init) model
 
         temp_explorer.log_position(epoch=-1, verbose=True)  # init
@@ -850,8 +892,8 @@ def main():
     }
 
     # --- 1) MSE with train ---
-    mse_trained_model, mse_base_w, mse_traj_w, mse_traj_ep, mse_dirs, mse_scale, mse_stats = train_and_record(
-        "mse", train_epochs=100
+    mse_trained_model, mse_base_w, mse_traj_w, mse_traj_ep, mse_dirs, mse_scale, mse_stats = (
+        train_and_record("mse", train_epochs=100)
     )
     mse_with_dir = run_dir("mse", "with_train")
     os.makedirs(mse_with_dir, exist_ok=True)
@@ -900,8 +942,8 @@ def main():
     )
 
     # --- 3) Physics with train ---
-    phy_trained_model, phy_base_w, phy_traj_w, phy_traj_ep, phy_dirs, phy_scale, phy_stats = train_and_record(
-        "physics", train_epochs=100
+    phy_trained_model, phy_base_w, phy_traj_w, phy_traj_ep, phy_dirs, phy_scale, phy_stats = (
+        train_and_record("physics", train_epochs=100)
     )
     phy_with_dir = run_dir("physics", "with_train")
     os.makedirs(phy_with_dir, exist_ok=True)

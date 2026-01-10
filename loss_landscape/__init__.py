@@ -16,15 +16,12 @@ LossLandscape - 通用 Loss Landscape 自动化分析平台
     writer.close()
 """
 
-from .core import (
-    # 推荐使用
-    LossLandscapeWriter,
-    sample_landscape,
-    # 高级用户
+from .core import (  # 推荐使用; 高级用户; 别名
     Explorer,
     LandscapeStorage,
-    # 别名
+    LossLandscapeWriter,
     Writer,
+    sample_landscape,
 )
 
 __version__ = "0.1.0"
