@@ -404,25 +404,38 @@ export default function LossLandscape1D({
     setHoverInfo(null);
   };
 
-  // Legend drag handlers
+  // Legend drag handlers - optimized with requestAnimationFrame
+  const rafIdRef = useRef<number | null>(null);
+  
   const startLegendDrag = (e: React.MouseEvent) => {
     if (e.button !== 0) return; // Only left mouse button
     e.preventDefault();
     isDraggingLegend.current = true;
     dragStart.current = { x: e.clientX, y: e.clientY };
     posStart.current = { ...legendPos };
-    document.addEventListener('mousemove', handleLegendDrag);
+    document.addEventListener('mousemove', handleLegendDrag, { passive: true });
     document.addEventListener('mouseup', stopLegendDrag);
   };
 
   const handleLegendDrag = (e: MouseEvent) => {
     if (!isDraggingLegend.current) return;
-    const dx = e.clientX - dragStart.current.x;
-    const dy = e.clientY - dragStart.current.y;
-    setLegendPos({ x: posStart.current.x + dx, y: posStart.current.y + dy });
+    
+    // Throttle updates with requestAnimationFrame
+    if (rafIdRef.current !== null) return;
+    
+    rafIdRef.current = requestAnimationFrame(() => {
+      rafIdRef.current = null;
+      const dx = e.clientX - dragStart.current.x;
+      const dy = e.clientY - dragStart.current.y;
+      setLegendPos({ x: posStart.current.x + dx, y: posStart.current.y + dy });
+    });
   };
 
   const stopLegendDrag = () => {
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
     isDraggingLegend.current = false;
     document.removeEventListener('mousemove', handleLegendDrag);
     document.removeEventListener('mouseup', stopLegendDrag);
@@ -430,6 +443,9 @@ export default function LossLandscape1D({
 
   useEffect(() => {
     return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
       document.removeEventListener('mousemove', handleLegendDrag);
       document.removeEventListener('mouseup', stopLegendDrag);
     };

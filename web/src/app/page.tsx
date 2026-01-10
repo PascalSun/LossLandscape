@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { useI18n } from './i18n';
 import { useTheme } from './theme';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import MetricChart from './components/MetricChart';
 import Modal from './components/Modal';
+import DraggablePanel from './components/DraggablePanel';
 
 // Dynamically import React Three Fiber components to avoid SSR issues
 const LossLandscape3D = dynamic(() => import('./components/LossLandscape3D'), {
@@ -66,15 +67,18 @@ export default function Page() {
   const [surfaceCardPos, setSurfaceCardPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [sliceCardPos, setSliceCardPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [renderModeCardPos, setRenderModeCardPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [isDraggingSurfaceCard, setIsDraggingSurfaceCard] = useState(false);
-  const [isDraggingSliceCard, setIsDraggingSliceCard] = useState(false);
-  const [isDraggingRenderModeCard, setIsDraggingRenderModeCard] = useState(false);
+  // Use refs for drag state to avoid re-binding event listeners
+  const isDraggingSurfaceCard = useRef(false);
+  const isDraggingSliceCard = useRef(false);
+  const isDraggingRenderModeCard = useRef(false);
   const surfaceCardDragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const sliceCardDragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const renderModeCardDragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const surfaceCardPosStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const sliceCardPosStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const renderModeCardPosStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  // Track cursor state for UI feedback (only update on drag start/end)
+  const [isDraggingAnyCard, setIsDraggingAnyCard] = useState(false);
   
   // Available runs
   const [availableRuns, setAvailableRuns] = useState<string[]>([]);
@@ -311,58 +315,58 @@ export default function Page() {
     setViewMode('2d');
   }, [data?.loss_grid_3d, data?.loss_grid_2d]);
 
-  // Card drag handlers
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (isDraggingSurfaceCard) {
-        const dx = e.clientX - surfaceCardDragStart.current.x;
-        const dy = e.clientY - surfaceCardDragStart.current.y;
-        setSurfaceCardPos({ x: surfaceCardPosStart.current.x + dx, y: surfaceCardPosStart.current.y + dy });
-      }
-      if (isDraggingSliceCard) {
-        const dx = e.clientX - sliceCardDragStart.current.x;
-        const dy = e.clientY - sliceCardDragStart.current.y;
-        setSliceCardPos({ x: sliceCardPosStart.current.x + dx, y: sliceCardPosStart.current.y + dy });
-      }
-      if (isDraggingRenderModeCard) {
-        const dx = e.clientX - renderModeCardDragStart.current.x;
-        const dy = e.clientY - renderModeCardDragStart.current.y;
-        setRenderModeCardPos({ x: renderModeCardPosStart.current.x + dx, y: renderModeCardPosStart.current.y + dy });
-      }
-    };
-    const onUp = () => {
-      if (isDraggingSurfaceCard) setIsDraggingSurfaceCard(false);
-      if (isDraggingSliceCard) setIsDraggingSliceCard(false);
-      if (isDraggingRenderModeCard) setIsDraggingRenderModeCard(false);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-    };
-  }, [isDraggingSurfaceCard, isDraggingSliceCard, isDraggingRenderModeCard]);
+  // Optimize 2D/3D toggle handlers with useCallback and stopPropagation
+  const handleSetSurfaceMode2D = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSurfaceMode('2d');
+  }, []);
 
-  const startSurfaceCardDrag = (e: React.MouseEvent) => {
-    setIsDraggingSurfaceCard(true);
-    surfaceCardDragStart.current = { x: e.clientX, y: e.clientY };
-    surfaceCardPosStart.current = surfaceCardPos;
-    e.preventDefault();
-  };
+  const handleSetSurfaceMode3D = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSurfaceMode('3d');
+  }, []);
 
-  const startSliceCardDrag = (e: React.MouseEvent) => {
-    setIsDraggingSliceCard(true);
-    sliceCardDragStart.current = { x: e.clientX, y: e.clientY };
-    sliceCardPosStart.current = sliceCardPos;
-    e.preventDefault();
-  };
+  // Memoize button styles to avoid recreating on every render - match top-right component style
+  const buttonBaseStyle = useMemo(() => ({
+    padding: '6px 14px' as const,
+    borderRadius: 8,
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer' as const,
+    flex: 1,
+    transition: 'all 0.2s' as const, // Add smooth transition like top-right component
+  }), []);
 
-  const startRenderModeCardDrag = (e: React.MouseEvent) => {
-    setIsDraggingRenderModeCard(true);
-    renderModeCardDragStart.current = { x: e.clientX, y: e.clientY };
-    renderModeCardPosStart.current = renderModeCardPos;
-    e.preventDefault();
-  };
+  const button2DStyle = useMemo(() => ({
+    ...buttonBaseStyle,
+    border: surfaceMode === '2d' ? '2px solid var(--accent)' : `1px solid ${isDark ? 'rgba(255,255,255,0.22)' : 'rgba(15,23,42,0.12)'}`,
+    background: surfaceMode === '2d' ? 'rgba(249,115,22,0.15)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)'),
+    color: isDark ? 'rgba(255,255,255,0.95)' : '#0f172a',
+  }), [surfaceMode, buttonBaseStyle, isDark]);
+
+  const button3DStyle = useMemo(() => ({
+    ...buttonBaseStyle,
+    border: surfaceMode === '3d' ? '2px solid var(--accent)' : `1px solid ${isDark ? 'rgba(255,255,255,0.22)' : 'rgba(15,23,42,0.12)'}`,
+    background: surfaceMode === '3d' ? 'rgba(249,115,22,0.15)' : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.04)'),
+    color: isDark ? 'rgba(255,255,255,0.95)' : '#0f172a',
+  }), [surfaceMode, buttonBaseStyle, isDark]);
+
+  // Memoize card visual style (layout styles handled by DraggablePanel)
+  const cardVisualStyle = useMemo(() => ({
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 10,
+    padding: '14px 16px',
+    borderRadius: 16,
+    border: `1px solid ${isDark ? 'rgba(255,255,255,0.22)' : 'rgba(15,23,42,0.12)'}`,
+    background: isDark ? 'rgba(0,0,0,0.72)' : 'rgba(255,255,255,0.86)',
+    backdropFilter: 'blur(12px)',
+    color: isDark ? 'rgba(255,255,255,0.95)' : '#0f172a',
+    fontSize: 13,
+    boxShadow: isDark ? '0 12px 40px rgba(0,0,0,0.5)' : '0 12px 40px rgba(15,23,42,0.12)',
+    width: 300,
+    minHeight: 80,
+  }), [isDark]);
 
   const renderRunTab = () => {
     return (
@@ -2166,31 +2170,11 @@ export default function Page() {
             </div>
           )}
 
-          {/* 3D Render Mode Selector - Bottom Left, Draggable */}
+          {/* 3D Render Mode Selector - Bottom Left - optimized with DraggablePanel */}
           {viewMode === '3d' && data?.loss_grid_3d && (
-            <div
-              style={{
-                position: 'absolute',
-                bottom: 16,
-                left: 16,
-                transform: `translate(${renderModeCardPos.x}px, ${-renderModeCardPos.y}px)`,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 10,
-                padding: '14px 16px',
-                borderRadius: 16,
-                border: `1px solid ${isDark ? 'rgba(255,255,255,0.22)' : 'rgba(15,23,42,0.12)'}`,
-                background: isDark ? 'rgba(0,0,0,0.72)' : 'rgba(255,255,255,0.86)',
-                backdropFilter: 'blur(12px)',
-                color: isDark ? 'rgba(255,255,255,0.95)' : '#0f172a',
-                fontSize: 13,
-                boxShadow: isDark ? '0 12px 40px rgba(0,0,0,0.5)' : '0 12px 40px rgba(15,23,42,0.12)',
-                pointerEvents: 'auto',
-                zIndex: 20,
-                minWidth: 220,
-                cursor: isDraggingRenderModeCard ? 'grabbing' : 'grab',
-              }}
-              onMouseDown={startRenderModeCardDrag}
+            <DraggablePanel
+              position="bottom-left"
+              style={{ ...cardVisualStyle, minWidth: 220 }}
             >
               <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 2, letterSpacing: '0.02em' }}>
                 {t.view3DRenderMode}
@@ -2239,7 +2223,7 @@ export default function Page() {
                   {t.view3DVolume}
                 </button>
               </div>
-            </div>
+            </DraggablePanel>
           )}
 
           {viewMode === 'metadata' ? (
@@ -2725,99 +2709,38 @@ export default function Page() {
             </div>
           )}
 
-          {/* Surface view 2D/3D toggle, bottom-right */}
+          {/* Surface view 2D/3D toggle, bottom-right - optimized with DraggablePanel */}
           {viewMode === '2d' && (
-            <div
-              style={{
-                position: 'absolute',
-                right: 20,
-                bottom: 20,
-                transform: `translate(${surfaceCardPos.x}px, ${surfaceCardPos.y}px)`,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 8,
-                padding: '10px 12px',
-                borderRadius: 14,
-                border: '1px solid var(--border)',
-                background: 'var(--bg-glass)',
-                backdropFilter: 'blur(10px)',
-                color: 'var(--text-primary)',
-                fontSize: 12,
-                boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
-                pointerEvents: 'auto',
-                zIndex: 20,
-                width: 300,
-                minHeight: 80, // keep height stable when toggling 2D/3D
-                cursor: isDraggingSurfaceCard ? 'grabbing' : 'grab',
-              }}
-              onMouseDown={startSurfaceCardDrag}
+            <DraggablePanel
+              position="bottom-right"
+              style={cardVisualStyle}
             >
-              <div style={{ fontWeight: 700, fontSize: 14 }}>{t.viewSurface}</div>
+              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 2, letterSpacing: '0.02em' }}>{t.viewSurface}</div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <button
                   type="button"
-                  onClick={() => setSurfaceMode('2d')}
-                  style={{
-                    padding: '4px 8px',
-                    borderRadius: 999,
-                    border: surfaceMode === '2d' ? '2px solid var(--accent)' : '1px solid var(--border)',
-                    background: surfaceMode === '2d' ? 'rgba(249,115,22,0.15)' : 'var(--bg-lang-toggle)',
-                    color: 'var(--text-primary)',
-                    fontSize: 11,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    flex: 1,
-                  }}
+                  onClick={handleSetSurfaceMode2D}
+                  style={button2DStyle}
                 >
                   2D
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSurfaceMode('3d')}
-                  style={{
-                    padding: '4px 8px',
-                    borderRadius: 999,
-                    border: surfaceMode === '3d' ? '2px solid var(--accent)' : '1px solid var(--border)',
-                    background: surfaceMode === '3d' ? 'rgba(249,115,22,0.15)' : 'var(--bg-lang-toggle)',
-                    color: 'var(--text-primary)',
-                    fontSize: 11,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    flex: 1,
-                  }}
+                  onClick={handleSetSurfaceMode3D}
+                  style={button3DStyle}
                 >
                   3D
                 </button>
               </div>
-            </div>
+            </DraggablePanel>
           )}
 
           {viewMode === '3d' && view3DRenderMode === 'slice' && (
             <>
               {/* Right-side axis + mode controls */}
-              <div
-                style={{
-                  position: 'absolute',
-                  right: 20,
-                  bottom: 20,
-                  transform: `translate(${sliceCardPos.x}px, ${sliceCardPos.y}px)`,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 12,
-                  padding: '14px 16px',
-                  borderRadius: 16,
-                  border: '1px solid var(--border)',
-                  background: 'var(--bg-glass)',
-                  backdropFilter: 'blur(10px)',
-                  color: 'var(--text-primary)',
-                  fontSize: 12,
-                  boxShadow: getThemeColor('0 2px 12px rgba(59, 130, 246, 0.08)', '0 2px 12px rgba(0, 0, 0, 0.25)'),
-                  pointerEvents: 'auto',
-                  zIndex: 20,
-                  width: 300,
-                  cursor: isDraggingSliceCard ? 'grabbing' : 'grab',
-                }}
-                onMouseDown={startSliceCardDrag}
+              <DraggablePanel
+                position="bottom-right"
+                style={cardVisualStyle}
               >
                 <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{t.viewSlice} - {view3DRenderMode === 'slice' ? t.view3DSlice : t.view3DVolume}</div>
                 
@@ -2943,7 +2866,7 @@ export default function Page() {
                         : `${t.betaIdx}=${sliceIndex}`}
                   </div>
                 </div>
-              </div>
+              </DraggablePanel>
 
             </>
           )}

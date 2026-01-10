@@ -706,27 +706,43 @@ export default function LossVolumeRender3D({
     return { minV, maxV, planes, dataMinV, dataMaxV };
   }, [lossGrid3d, step, threshold, ZArray, norm, colorScale, alphaGamma, alphaFloor]);
 
-  // Legend and slider panel drag handlers
+  // Legend and slider panel drag handlers - optimized with requestAnimationFrame
   useEffect(() => {
+    let rafId: number | null = null;
+    
     const onMove = (e: MouseEvent) => {
-      if (isDraggingLegend.current) {
-        const dx = e.clientX - dragStart.current.x;
-        const dy = e.clientY - dragStart.current.y;
-        setLegendPos({ x: posStart.current.x + dx, y: posStart.current.y + dy });
-      }
-      if (isDraggingSliderPanel.current) {
-        const dx = e.clientX - sliderDragStart.current.x;
-        const dy = e.clientY - sliderDragStart.current.y;
-        setSliderPanelPos({ x: sliderPosStart.current.x + dx, y: sliderPosStart.current.y + dy });
-      }
+      // Throttle updates with requestAnimationFrame
+      if (rafId !== null) return;
+      
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        
+        if (isDraggingLegend.current) {
+          const dx = e.clientX - dragStart.current.x;
+          const dy = e.clientY - dragStart.current.y;
+          setLegendPos({ x: posStart.current.x + dx, y: posStart.current.y + dy });
+        }
+        if (isDraggingSliderPanel.current) {
+          const dx = e.clientX - sliderDragStart.current.x;
+          const dy = e.clientY - sliderDragStart.current.y;
+          setSliderPanelPos({ x: sliderPosStart.current.x + dx, y: sliderPosStart.current.y + dy });
+        }
+      });
     };
+    
     const onUp = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
       if (isDraggingLegend.current) isDraggingLegend.current = false;
       if (isDraggingSliderPanel.current) isDraggingSliderPanel.current = false;
     };
-    window.addEventListener('mousemove', onMove);
+    
+    window.addEventListener('mousemove', onMove, { passive: true });
     window.addEventListener('mouseup', onUp);
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };

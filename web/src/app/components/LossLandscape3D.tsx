@@ -742,20 +742,36 @@ export default function LossLandscape3D({
     setViewEpoch(maxEpoch);
   }, [maxEpoch]);
 
-  // Legend drag handlers to avoid blocking top-right content
+  // Legend drag handlers to avoid blocking top-right content - optimized with requestAnimationFrame
   useEffect(() => {
+    let rafId: number | null = null;
+    
     const onMove = (e: MouseEvent) => {
       if (!isDraggingLegend.current) return;
-      const dx = e.clientX - dragStart.current.x;
-      const dy = e.clientY - dragStart.current.y;
-      setLegendPos({ x: posStart.current.x + dx, y: posStart.current.y + dy });
+      
+      // Throttle updates with requestAnimationFrame
+      if (rafId !== null) return;
+      
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const dx = e.clientX - dragStart.current.x;
+        const dy = e.clientY - dragStart.current.y;
+        setLegendPos({ x: posStart.current.x + dx, y: posStart.current.y + dy });
+      });
     };
+    
     const onUp = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
       if (isDraggingLegend.current) isDraggingLegend.current = false;
     };
-    window.addEventListener('mousemove', onMove);
+    
+    window.addEventListener('mousemove', onMove, { passive: true });
     window.addEventListener('mouseup', onUp);
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
