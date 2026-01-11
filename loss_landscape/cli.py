@@ -167,16 +167,42 @@ def demo_run(files, override, output_dir):
         click.echo(f"Running {len(config_files)} experiment(s) from file(s)")
         click.echo(f"{'='*60}\n")
 
+        # Check if all config files are from the same directory
+        # If so, create a unified output directory
+        parent_dirs = {f.parent for f in config_files}
+        unified_output_base = None
+
+        if len(parent_dirs) == 1 and not output_dir:
+            # All files from the same directory - create unified output folder
+            parent_dir = parent_dirs.pop()
+            from datetime import datetime
+            from pathlib import Path
+
+            # Create unified output directory based on parent folder name
+            folder_name = parent_dir.name
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            unified_output_base = Path("outputs") / folder_name / f"batch_{timestamp}"
+            unified_output_base.mkdir(parents=True, exist_ok=True)
+            logger.info(
+                f"All configs from same folder - using unified output: {unified_output_base}"
+            )
+
         results = []
         for i, config_path in enumerate(config_files, 1):
             click.echo(f"\n[{i}/{len(config_files)}] Running: {config_path.name}")
             click.echo("-" * 40)
 
             try:
+                # If unified output, create subdirectory for each config
+                config_output_dir = output_dir
+                if unified_output_base and not output_dir:
+                    # Create subdirectory based on config file name (without extension)
+                    config_output_dir = str(unified_output_base / config_path.stem)
+
                 result = run_from_file(
                     config_path=str(config_path),
                     overrides=list(override) if override else None,
-                    output_dir=output_dir,
+                    output_dir=config_output_dir,
                 )
                 results.append({"file": str(config_path), "status": "success", "result": result})
                 click.echo(f"✓ {config_path.name} completed")
@@ -199,6 +225,13 @@ def demo_run(files, override, output_dir):
         for r in results:
             status = "✓" if r["status"] == "success" else "✗"
             click.echo(f"  {status} {Path(r['file']).name}")
+
+        # Show unified output directory if used
+        if unified_output_base:
+            click.echo(f"\n{'='*60}")
+            click.echo(f"Unified Output Directory: {unified_output_base}")
+            click.echo(f"{'='*60}")
+            click.echo("All experiment outputs are organized in the above directory.")
 
 
 @cli.command()

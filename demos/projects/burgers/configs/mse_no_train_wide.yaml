@@ -1,0 +1,53 @@
+# Burgers Equation - MSE Loss without Training (Wide Landscape)
+# Generates landscape from random initialization with wider sampling range
+# to see more complete loss landscape structure
+
+experiment:
+  name: "burgers_mse_no_train_wide"
+  project: "burgers"
+  description: "Burgers equation with MSE loss - no training with wide landscape view"
+  seed: 42
+  tags: ["burgers", "mse", "no_train", "wide_landscape"]
+
+dataset:
+  name: "burgers"
+  num_samples: 2000
+  batch_size: 64
+  num_workers: 0
+  nu: 0.05
+  noise_std: 0.01
+  val_split: 0.1
+
+model:
+  name: "mlp"
+  params:
+    hidden_sizes: [256, 256, 128, 64]
+    activation: "silu"
+
+training:
+  epochs: 0  # No training - just generate landscape from init
+  optimizer:
+    name: "adam"
+    lr: 0.001
+    weight_decay: 0.0
+  scheduler: null
+  loss: "burgers_mse"
+
+landscape:
+  enabled: true
+  # Increased grid sizes for better resolution
+  grid_size_1d: 200      # More points for 1D line
+  grid_size_2d: 50       # More points for 2D surface (50x50 = 2500 points)
+  grid_size_3d: 20       # More points for 3D volume (20x20x20 = 8000 points)
+  
+  # KEY: Increase range_scale to see wider landscape
+  # - 0.1 = ±10% (default, narrow view)
+  # - 0.5 = ±50% (medium view, recommended for no training)
+  # - 1.0 = ±100% (wide view, may be slow)
+  # - 2.0 = ±200% (very wide, may show extreme values)
+  range_scale: 0.5  # Wider sampling range to see more of the landscape
+  
+  record_trajectory: false  # No trajectory for no_train
+  compute_hessian: true
+  hessian_top_k: 5
+  directions: "random"  # Random directions since no trajectory

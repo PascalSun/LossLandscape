@@ -59,6 +59,13 @@ export default function Page() {
   const [data, setData] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
   
+  // Split-screen mode
+  const [splitScreen, setSplitScreen] = useState(false);
+  const [selectedRun2, setSelectedRun2] = useState<string>('');
+  const [loading2, setLoading2] = useState(false);
+  const [data2, setData2] = useState<any | null>(null);
+  const [error2, setError2] = useState<string | null>(null);
+  
   // Viewer controls
   const [viewMode, setViewMode] = useState<'1d' | '2d' | '3d' | 'metadata' | 'hessian' | 'config'>('2d');
   const [view3DRenderMode, setView3DRenderMode] = useState<'slice' | 'volume'>('slice');
@@ -270,18 +277,63 @@ export default function Page() {
                   )}
                 </div>
                 {hasDirectFiles && (
-                  <button
-                    className="btn btn-sm btn-primary"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedRun(folderPath);
-                      loadFromRun(folderPath);
-                    }}
-                    disabled={loading}
-                    style={{ fontSize: 13, padding: '4px 12px', marginLeft: 8, flexShrink: 0 }}
-                  >
-                    {t.import}
-                  </button>
+                  <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                    {splitScreen ? (
+                      <>
+                        <button
+                          className="btn btn-sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedRun(folderPath);
+                            loadFromRun(folderPath);
+                          }}
+                          disabled={loading}
+                          style={{ 
+                            fontSize: 13, 
+                            padding: '4px 12px',
+                            border: '1px solid var(--border)',
+                            background: selectedRun === folderPath ? 'rgba(249,115,22,0.15)' : 'var(--bg-lang-toggle)',
+                            color: 'var(--text-primary)',
+                          }}
+                          title={t.loadToLeft}
+                        >
+                          {t.run1}
+                        </button>
+                        <button
+                          className="btn btn-sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedRun2(folderPath);
+                            loadFromRun(folderPath, true);
+                          }}
+                          disabled={loading2}
+                          style={{ 
+                            fontSize: 13, 
+                            padding: '4px 12px',
+                            border: '1px solid var(--border)',
+                            background: selectedRun2 === folderPath ? 'rgba(249,115,22,0.15)' : 'var(--bg-lang-toggle)',
+                            color: 'var(--text-primary)',
+                          }}
+                          title={t.loadToRight}
+                        >
+                          {t.run2}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="btn btn-sm btn-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedRun(folderPath);
+                          loadFromRun(folderPath);
+                        }}
+                        disabled={loading}
+                        style={{ fontSize: 13, padding: '4px 12px' }}
+                      >
+                        {t.import}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
               {isExpanded && hasSubItems && (
@@ -327,18 +379,63 @@ export default function Page() {
             <span style={{ fontSize: 14, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
               {path.split('/').pop()}
             </span>
-            <button
-              className="btn btn-sm btn-primary"
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedRun(path);
-                loadFromRun(path);
-              }}
-              disabled={loading}
-              style={{ fontSize: 13, padding: '4px 12px', marginLeft: 8, flexShrink: 0 }}
-            >
-              {t.import}
-            </button>
+            <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+              {splitScreen ? (
+                <>
+                  <button
+                    className="btn btn-sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedRun(path);
+                      loadFromRun(path);
+                    }}
+                    disabled={loading}
+                    style={{ 
+                      fontSize: 13, 
+                      padding: '4px 12px',
+                      border: '1px solid var(--border)',
+                      background: selectedRun === path ? 'rgba(249,115,22,0.15)' : 'var(--bg-lang-toggle)',
+                      color: 'var(--text-primary)',
+                    }}
+                    title="加载到左侧 (Run 1)"
+                  >
+                    {t.run1}
+                  </button>
+                  <button
+                    className="btn btn-sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedRun2(path);
+                      loadFromRun(path, true);
+                    }}
+                    disabled={loading2}
+                    style={{ 
+                      fontSize: 13, 
+                      padding: '4px 12px',
+                      border: '1px solid var(--border)',
+                      background: selectedRun2 === path ? 'rgba(249,115,22,0.15)' : 'var(--bg-lang-toggle)',
+                      color: 'var(--text-primary)',
+                    }}
+                    title="加载到右侧 (Run 2)"
+                  >
+                    {t.run2}
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="btn btn-sm btn-primary"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedRun(path);
+                    loadFromRun(path);
+                  }}
+                  disabled={loading}
+                  style={{ fontSize: 13, padding: '4px 12px' }}
+                >
+                  {t.import}
+                </button>
+              )}
+            </div>
           </div>
         );
       });
@@ -347,10 +444,16 @@ export default function Page() {
     return items;
   };
 
-  async function loadFromRun(runPath: string) {
-    setLoading(true);
-    setError(null);
-    setData(null);
+  async function loadFromRun(runPath: string, isSecond = false) {
+    if (isSecond) {
+      setLoading2(true);
+      setError2(null);
+      setData2(null);
+    } else {
+      setLoading(true);
+      setError(null);
+      setData(null);
+    }
     try {
       const res = await fetch('/api/load-from-run', {
         method: 'POST',
@@ -363,11 +466,15 @@ export default function Page() {
       if (res.status === 202) {
         const retryAfter = json.retry_after || 5000;
         const message = json.message || 'Export is in progress. Please wait...';
-        setError(`${message} (Will retry in ${retryAfter / 1000}s)`);
+        if (isSecond) {
+          setError2(`${message} (Will retry in ${retryAfter / 1000}s)`);
+        } else {
+          setError(`${message} (Will retry in ${retryAfter / 1000}s)`);
+        }
         
         // Auto-retry after the suggested delay
         setTimeout(() => {
-          loadFromRun(runPath);
+          loadFromRun(runPath, isSecond);
         }, retryAfter);
         return;
       }
@@ -398,25 +505,43 @@ export default function Page() {
         config_yml: json.data?.config_yml,
       };
       
-      setData(normalizedData);
-      // Set view mode based on data
-      if (normalizedData.loss_grid_3d) {
-        setViewMode('2d');
+      if (isSecond) {
+        setData2(normalizedData);
       } else {
-        setViewMode('2d');
-        setSurfaceMode('2d');
+        setData(normalizedData);
+        // Set view mode based on data
+        if (normalizedData.loss_grid_3d) {
+          setViewMode('2d');
+        } else {
+          setViewMode('2d');
+          setSurfaceMode('2d');
+        }
       }
     } catch (e: any) {
-      setError(e?.message || String(e));
+      if (isSecond) {
+        setError2(e?.message || String(e));
+      } else {
+        setError(e?.message || String(e));
+      }
     } finally {
-      setLoading(false);
+      if (isSecond) {
+        setLoading2(false);
+      } else {
+        setLoading(false);
+      }
     }
   }
 
-  async function loadFromId(id: number) {
-    setLoading(true);
-    setError(null);
-    setData(null);
+  async function loadFromId(id: number, isSecond = false) {
+    if (isSecond) {
+      setLoading2(true);
+      setError2(null);
+      setData2(null);
+    } else {
+      setLoading(true);
+      setError(null);
+      setData(null);
+    }
     try {
       const res = await fetch(`/api/landscape/${id}`);
       const json = await res.json();
@@ -438,18 +563,30 @@ export default function Page() {
         config_yml: json?.config_yml,
       };
       
-      setData(normalizedData);
-      // Set view mode based on data
-      if (normalizedData.loss_grid_3d) {
-        setViewMode('2d');
+      if (isSecond) {
+        setData2(normalizedData);
       } else {
-        setViewMode('2d');
-        setSurfaceMode('2d');
+        setData(normalizedData);
+        // Set view mode based on data
+        if (normalizedData.loss_grid_3d) {
+          setViewMode('2d');
+        } else {
+          setViewMode('2d');
+          setSurfaceMode('2d');
+        }
       }
     } catch (e: any) {
-      setError(e?.message || String(e));
+      if (isSecond) {
+        setError2(e?.message || String(e));
+      } else {
+        setError(e?.message || String(e));
+      }
     } finally {
-      setLoading(false);
+      if (isSecond) {
+        setLoading2(false);
+      } else {
+        setLoading(false);
+      }
     }
   }
 
@@ -578,18 +715,63 @@ export default function Page() {
                 <span style={{ fontSize: 14, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {r}
                 </span>
-                <button
-                  className="btn btn-sm btn-primary"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedRun(r);
-                    loadFromRun(r);
-                  }}
-                  disabled={loading}
-                  style={{ fontSize: 13, padding: '4px 12px', marginLeft: 8 }}
-                >
-                  {t.import}
-                </button>
+                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                  {splitScreen ? (
+                    <>
+                      <button
+                        className="btn btn-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedRun(r);
+                          loadFromRun(r);
+                        }}
+                        disabled={loading}
+                        style={{ 
+                          fontSize: 13, 
+                          padding: '4px 12px',
+                          border: '1px solid var(--border)',
+                          background: selectedRun === r ? 'rgba(249,115,22,0.15)' : 'var(--bg-lang-toggle)',
+                          color: 'var(--text-primary)',
+                        }}
+                        title="加载到左侧 (Run 1)"
+                      >
+                        {t.run1}
+                      </button>
+                      <button
+                        className="btn btn-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedRun2(r);
+                          loadFromRun(r, true);
+                        }}
+                        disabled={loading2}
+                        style={{ 
+                          fontSize: 13, 
+                          padding: '4px 12px',
+                          border: '1px solid var(--border)',
+                          background: selectedRun2 === r ? 'rgba(249,115,22,0.15)' : 'var(--bg-lang-toggle)',
+                          color: 'var(--text-primary)',
+                        }}
+                        title="加载到右侧 (Run 2)"
+                      >
+                        {t.run2}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className="btn btn-sm btn-primary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedRun(r);
+                        loadFromRun(r);
+                      }}
+                      disabled={loading}
+                      style={{ fontSize: 13, padding: '4px 12px' }}
+                    >
+                      {t.import}
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -837,36 +1019,107 @@ export default function Page() {
                     )}
                   </div>
 
-                  {/* Load button */}
-                  <button
-                    className="btn btn-sm btn-primary"
-                    onClick={() => {
-                      // Prefer loading from database by ID (standalone, no file needed)
-                      // Only fall back to loadFromRun if no ID is available
-                      if (h.id) {
-                        loadFromId(h.id);
-                      } else if (h.run_dir) {
-                        loadFromRun(h.run_dir);
-                      }
-                    }}
-                    disabled={loading || (!h.run_dir && !h.id)}
-                    style={{ 
-                      fontSize: 13, 
-                      padding: '8px 16px', 
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                    }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                      <polyline points="7 10 12 15 17 10" />
-                      <line x1="12" y1="15" x2="12" y2="3" />
-                    </svg>
-                    {t.load}
-                  </button>
+                  {/* Load button(s) */}
+                  {splitScreen ? (
+                    <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+                      <button
+                        className="btn btn-sm"
+                        onClick={() => {
+                          // Prefer loading from database by ID (standalone, no file needed)
+                          // Only fall back to loadFromRun if no ID is available
+                          if (h.id) {
+                            loadFromId(h.id, false);
+                          } else if (h.run_dir) {
+                            loadFromRun(h.run_dir, false);
+                          }
+                        }}
+                        disabled={loading || (!h.run_dir && !h.id)}
+                        style={{ 
+                          fontSize: 13, 
+                          padding: '8px 16px', 
+                          flex: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          border: '1px solid var(--border)',
+                          background: 'var(--bg-lang-toggle)',
+                          color: 'var(--text-primary)',
+                        }}
+                        title={t.loadToLeft}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="7 10 12 15 17 10" />
+                          <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                        {t.run1}
+                      </button>
+                      <button
+                        className="btn btn-sm"
+                        onClick={() => {
+                          // Prefer loading from database by ID (standalone, no file needed)
+                          // Only fall back to loadFromRun if no ID is available
+                          if (h.id) {
+                            loadFromId(h.id, true);
+                          } else if (h.run_dir) {
+                            loadFromRun(h.run_dir, true);
+                          }
+                        }}
+                        disabled={loading2 || (!h.run_dir && !h.id)}
+                        style={{ 
+                          fontSize: 13, 
+                          padding: '8px 16px', 
+                          flex: 1,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 6,
+                          border: '1px solid var(--border)',
+                          background: 'var(--bg-lang-toggle)',
+                          color: 'var(--text-primary)',
+                        }}
+                        title={t.loadToRight}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="7 10 12 15 17 10" />
+                          <line x1="12" y1="15" x2="12" y2="3" />
+                        </svg>
+                        {t.run2}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      className="btn btn-sm btn-primary"
+                      onClick={() => {
+                        // Prefer loading from database by ID (standalone, no file needed)
+                        // Only fall back to loadFromRun if no ID is available
+                        if (h.id) {
+                          loadFromId(h.id);
+                        } else if (h.run_dir) {
+                          loadFromRun(h.run_dir);
+                        }
+                      }}
+                      disabled={loading || (!h.run_dir && !h.id)}
+                      style={{ 
+                        fontSize: 13, 
+                        padding: '8px 16px', 
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                      </svg>
+                      {t.load}
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -2100,6 +2353,72 @@ export default function Page() {
     };
   }, [data, sliceAxis, sliceIndex, volumeAxes]);
 
+  // Helper functions for split-screen mode
+  const computeSliceMeta = (dataItem: any) => {
+    if (!dataItem?.loss_grid_3d) return { zVals: [] as number[], nz: 0 };
+    const nz = dataItem.loss_grid_3d[0]?.[0]?.length || 0;
+    if (nz <= 0) return { zVals: [] as number[], nz: 0 };
+
+    const volumeZ = dataItem.volume_z;
+    if (Array.isArray(volumeZ) && volumeZ.length === nz) {
+      const arr = (volumeZ as any[]).map((v) => Number(v)).filter((v) => Number.isFinite(v));
+      if (arr.length === nz) return { zVals: arr, nz };
+    }
+
+    const maybeZ = dataItem.Z;
+    if (Array.isArray(maybeZ) && maybeZ.length > 0) {
+      const first = maybeZ[0];
+      if (typeof first === 'number' || typeof first === 'string') {
+        const arr = (maybeZ as any[]).map((v) => Number(v)).filter((v) => Number.isFinite(v));
+        if (arr.length === nz) return { zVals: arr, nz };
+      }
+      if (Array.isArray(first)) {
+        const zLine = (maybeZ[0]?.[0] ?? []) as any[];
+        const arr = zLine.map((v) => Number(v)).filter((v) => Number.isFinite(v));
+        if (arr.length === nz) return { zVals: arr, nz };
+      }
+    }
+
+    return { zVals: Array.from({ length: nz }, (_, i) => i), nz };
+  };
+
+  const computeVolumeAxes = (dataItem: any, sliceMetaItem: { zVals: number[] }) => {
+    if (!dataItem?.loss_grid_3d) return { xVals: [] as number[], yVals: [] as number[], zVals: [] as number[] };
+    const nx = dataItem.loss_grid_3d.length || 0;
+    const ny = dataItem.loss_grid_3d[0]?.length || 0;
+    const nz = dataItem.loss_grid_3d[0]?.[0]?.length || 0;
+
+    const asNumArr = (arr: any, n: number) => {
+      if (!Array.isArray(arr) || arr.length !== n) return null;
+      const out = (arr as any[]).map((v) => Number(v));
+      return out.every((v) => Number.isFinite(v)) ? out : null;
+    };
+
+    const xFromExport = asNumArr(dataItem.volume_x, nx);
+    const yFromExport = asNumArr(dataItem.volume_y, ny);
+    const zFromExport = asNumArr(dataItem.volume_z, nz);
+
+    const linspace = (a: number, b: number, n: number) => {
+      if (n <= 1) return [a];
+      const out: number[] = [];
+      for (let i = 0; i < n; i++) out.push(a + (i / (n - 1)) * (b - a));
+      return out;
+    };
+
+    const flatX = Array.isArray(dataItem.X) ? (dataItem.X as any[]).flat().map(Number).filter(Number.isFinite) : [];
+    const flatY = Array.isArray(dataItem.Y) ? (dataItem.Y as any[]).flat().map(Number).filter(Number.isFinite) : [];
+    const xMin = flatX.length ? Math.min(...flatX) : -1;
+    const xMax = flatX.length ? Math.max(...flatX) : 1;
+    const yMin = flatY.length ? Math.min(...flatY) : -1;
+    const yMax = flatY.length ? Math.max(...flatY) : 1;
+
+    const xVals = xFromExport ?? linspace(xMin, xMax, nx);
+    const yVals = yFromExport ?? linspace(yMin, yMax, ny);
+    const zVals = zFromExport ?? sliceMetaItem.zVals;
+
+    return { xVals, yVals, zVals };
+  };
+
   const renderViewerControls = () => {
     if (!data) return null;
     
@@ -2215,6 +2534,633 @@ export default function Page() {
     );
   };
 
+  // Render a single visualization for split-screen mode
+  const renderVisualization = (dataItem: any, errorItem: string | null, _isSecond: boolean) => {
+    if (errorItem) {
+      return (
+        <div className="emptyState">
+          <div className="emptyStateIcon">⚠️</div>
+          <div>
+            <h3 className="emptyStateTitle">{t.loadError}</h3>
+            <p className="emptyStateDesc">{errorItem}</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (!dataItem) {
+      return (
+        <div className="emptyState">
+          <div className="emptyStateIcon">📊</div>
+          <div>
+            <h3 className="emptyStateTitle">{t.noDataTitle}</h3>
+            <p className="emptyStateDesc">{t.noDataDesc}</p>
+          </div>
+        </div>
+      );
+    }
+
+    const sliceMetaItem = computeSliceMeta(dataItem);
+    const volumeAxesItem = computeVolumeAxes(dataItem, sliceMetaItem);
+
+    // Compute slice trajectory for this data item
+    const computeSliceTrajectory = (dataItem: any, volumeAxesItem: any) => {
+      if (!dataItem?.trajectory_1 || !dataItem.trajectory_1.length) return undefined;
+      if (!dataItem?.loss_grid_3d) return undefined;
+
+      const trajA: number[] = dataItem.trajectory_1;
+      const trajB: number[] = dataItem.trajectory_2 || [];
+      const trajG: number[] = dataItem.trajectory_3 || [];
+      const epochs: number[] = dataItem.trajectory_epochs || [];
+
+      const halfThicknessAt = (vals: number[], idx: number) => {
+        if (!vals || vals.length <= 1) return 0;
+        const k = Math.max(0, Math.min(idx, vals.length - 1));
+        if (k <= 0) return Math.abs(vals[1] - vals[0]) / 2;
+        if (k >= vals.length - 1) return Math.abs(vals[vals.length - 1] - vals[vals.length - 2]) / 2;
+        const left = Math.abs(vals[k] - vals[k - 1]);
+        const right = Math.abs(vals[k + 1] - vals[k]);
+        return Math.min(left, right) / 2;
+      };
+
+      const { xVals, yVals, zVals } = volumeAxesItem;
+      const eps = 1e-12;
+
+      const projected = {
+        traj_1: [] as number[],
+        traj_2: [] as number[],
+        traj_3: [] as number[],
+        epochs: [] as number[],
+      };
+
+      const highlight = {
+        traj_1: [] as number[],
+        traj_2: [] as number[],
+        traj_3: [] as number[],
+        epochs: [] as number[],
+      };
+
+      const n = Math.min(trajA.length, trajB.length || trajA.length, trajG.length || trajA.length);
+      const defaultGamma = zVals && zVals.length > 0 ? (zVals[0] + zVals[zVals.length - 1]) / 2 : 0;
+
+      if (sliceAxis === 'gamma') {
+        const k = Math.max(0, Math.min(sliceIndex, Math.max(0, zVals.length - 1)));
+        const gamma0 = zVals[k] ?? 0;
+        const half = halfThicknessAt(zVals, k) + eps;
+
+        for (let i = 0; i < n; i++) {
+          const a = trajA[i];
+          const b = trajB[i];
+          const g = trajG[i] ?? defaultGamma;
+          if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(g)) continue;
+          projected.traj_1.push(a);
+          projected.traj_2.push(b);
+          projected.traj_3.push(g);
+          projected.epochs.push(epochs[i] ?? i);
+
+          if (!trajG.length) continue;
+          if (Math.abs(g - gamma0) <= half) {
+            highlight.traj_1.push(a);
+            highlight.traj_2.push(b);
+            highlight.traj_3.push(g);
+            highlight.epochs.push(epochs[i] ?? i);
+          }
+        }
+
+        return {
+          projected: projected.traj_1.length >= 2 ? projected : undefined,
+          highlight: highlight.traj_1.length > 0 ? highlight : undefined,
+        };
+      }
+
+      if (sliceAxis === 'alpha') {
+        const i0 = Math.max(0, Math.min(sliceIndex, Math.max(0, xVals.length - 1)));
+        const alpha0 = xVals[i0] ?? 0;
+        const half = halfThicknessAt(xVals, i0) + eps;
+
+        for (let i = 0; i < n; i++) {
+          const a = trajA[i];
+          const b = trajB[i];
+          const g = trajG[i] ?? defaultGamma;
+          if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(g)) continue;
+          projected.traj_1.push(b);
+          projected.traj_2.push(g);
+          projected.traj_3.push(g);
+          projected.epochs.push(epochs[i] ?? i);
+
+          if (Math.abs(a - alpha0) <= half) {
+            highlight.traj_1.push(b);
+            highlight.traj_2.push(g);
+            highlight.traj_3.push(g);
+            highlight.epochs.push(epochs[i] ?? i);
+          }
+        }
+
+        return {
+          projected: projected.traj_1.length >= 2 ? projected : undefined,
+          highlight: highlight.traj_1.length > 0 ? highlight : undefined,
+        };
+      }
+
+      // sliceAxis === 'beta'
+      const j0 = Math.max(0, Math.min(sliceIndex, Math.max(0, yVals.length - 1)));
+      const beta0 = yVals[j0] ?? 0;
+      const half = halfThicknessAt(yVals, j0) + eps;
+
+      for (let i = 0; i < n; i++) {
+        const a = trajA[i];
+        const b = trajB[i];
+        const g = trajG[i] ?? defaultGamma;
+        if (!Number.isFinite(a) || !Number.isFinite(b) || !Number.isFinite(g)) continue;
+        projected.traj_1.push(a);
+        projected.traj_2.push(g);
+        projected.traj_3.push(g);
+        projected.epochs.push(epochs[i] ?? i);
+
+        if (Math.abs(b - beta0) <= half) {
+          highlight.traj_1.push(a);
+          highlight.traj_2.push(g);
+          highlight.traj_3.push(g);
+          highlight.epochs.push(epochs[i] ?? i);
+        }
+      }
+
+      return {
+        projected: projected.traj_1.length >= 2 ? projected : undefined,
+        highlight: highlight.traj_1.length > 0 ? highlight : undefined,
+      };
+    };
+
+    const sliceTrajectoryItem = computeSliceTrajectory(dataItem, volumeAxesItem);
+
+    if (viewMode === 'metadata') {
+      return dataItem.metadata ? (
+        <div style={{ padding: '24px', height: '100%', overflowY: 'auto', background: 'var(--bg-card)' }}>
+          {/* Metadata rendering would go here - simplified for now */}
+          <div style={{ color: 'var(--text-primary)' }}>{t.metadataViewSimplified}</div>
+        </div>
+      ) : (
+        <div className="emptyState">
+          <div className="emptyStateIcon">📋</div>
+          <div>
+            <h3 className="emptyStateTitle">{t.noMetadataAvailable}</h3>
+            <p className="emptyStateDesc">{t.noMetadataInfo}</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (viewMode === 'config') {
+      return (
+        <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg-card)' }}>
+          <div style={{ color: 'var(--text-primary)' }}>{t.configViewSimplified}</div>
+        </div>
+      );
+    }
+
+    if (viewMode === 'hessian') {
+      return dataItem.hessian ? (
+        <div style={{ height: '100%', minHeight: 0, background: 'var(--bg-card)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <HessianAnalysis data={dataItem.hessian} metadata={dataItem.metadata} />
+        </div>
+      ) : (
+        <div className="emptyState">
+          <div className="emptyStateIcon">📉</div>
+          <div>
+            <h3 className="emptyStateTitle">{t.noHessianDataAvailable}</h3>
+            <p className="emptyStateDesc">{t.noHessianMetrics}</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (!dataItem?.X?.length || (!dataItem?.loss_grid_2d?.length && !dataItem?.loss_grid_3d?.length && !dataItem?.loss_line_1d?.length)) {
+      return (
+        <div className="emptyState">
+          <div className="emptyStateIcon">📊</div>
+          <div>
+            <h3 className="emptyStateTitle">{t.noDataTitle}</h3>
+            <p className="emptyStateDesc">{t.noDataDesc}</p>
+          </div>
+        </div>
+      );
+    }
+
+    // Render based on viewMode
+    if (viewMode === '1d') {
+      const has1D = dataItem?.loss_line_1d && dataItem.loss_line_1d.length > 0;
+      const x1d = dataItem?.X_1d || (dataItem?.X && Array.isArray(dataItem.X) && dataItem.X.length > 0 && typeof dataItem.X[0] === 'number' ? dataItem.X : null);
+      
+      return has1D && x1d ? (
+        <LossLandscape1D
+          X={x1d as number[]}
+          lossLine={dataItem.loss_line_1d}
+          baselineLoss={dataItem.baseline_loss_1d || dataItem.baseline_loss}
+          trajectory={
+            dataItem.trajectory_1 && dataItem.trajectory_1.length > 0
+              ? {
+                  traj_1: dataItem.trajectory_1,
+                  epochs: dataItem.trajectory_epochs || [],
+                }
+              : undefined
+          }
+          trajectoryHighlight={
+            dataItem.trajectory_1 && dataItem.trajectory_1.length > 0
+              ? {
+                  traj_1: dataItem.trajectory_1,
+                  epochs: dataItem.trajectory_epochs || [],
+                }
+              : undefined
+          }
+        />
+      ) : (
+        <div className="emptyState">
+          <div className="emptyStateIcon">📊</div>
+          <div>
+            <h3 className="emptyStateTitle">{t.no1DDataAvailable}</h3>
+            <p className="emptyStateDesc">{t.no1DLossData}</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (viewMode === '2d') {
+      return surfaceMode === '2d' ? (
+        <LossLandscape2D
+          X={dataItem.X}
+          Y={dataItem.Y}
+          lossGrid={dataItem.loss_grid_2d}
+          baselineLoss={dataItem.baseline_loss}
+          trajectory={
+            dataItem.trajectory_1 && dataItem.trajectory_1.length > 0
+              ? {
+                  traj_1: dataItem.trajectory_1,
+                  traj_2: dataItem.trajectory_2,
+                  epochs: dataItem.trajectory_epochs || [],
+                }
+              : undefined
+          }
+        />
+      ) : (
+        <LossLandscape3D
+          X={dataItem.X}
+          Y={dataItem.Y}
+          lossGrid={dataItem.loss_grid_2d}
+          baselineLoss={dataItem.baseline_loss}
+          trajectory={
+            dataItem.trajectory_1 && dataItem.trajectory_1.length > 0
+              ? {
+                  traj_1: dataItem.trajectory_1,
+                  traj_2: dataItem.trajectory_2,
+                  traj_3: dataItem.trajectory_3,
+                  epochs: dataItem.trajectory_epochs || [],
+                  losses: dataItem.trajectory_data?.losses || dataItem.trajectory_losses,
+                }
+              : undefined
+          }
+        />
+      );
+    }
+
+    if (viewMode === '3d' && view3DRenderMode === 'slice' && dataItem.loss_grid_3d) {
+      // Simplified 3D slice rendering for split-screen
+      if (sliceMode === '2d') {
+        if (sliceAxis === 'gamma') {
+          return (
+            <LossVolumeSlice2D
+              X={(() => {
+                const { xVals, yVals } = volumeAxesItem;
+                if (!xVals.length || !yVals.length) return dataItem.X;
+                return Array.from({ length: xVals.length }, (_, _i) =>
+                  Array.from({ length: yVals.length }, (_, _j) => xVals[_i])
+                );
+              })()}
+              Y={(() => {
+                const { xVals, yVals } = volumeAxesItem;
+                if (!xVals.length || !yVals.length) return dataItem.Y;
+                return Array.from({ length: xVals.length }, (_, _i) =>
+                  Array.from({ length: yVals.length }, (_, _j) => yVals[_j])
+                );
+              })()}
+              Z={volumeAxesItem.zVals}
+              lossGrid3d={dataItem.loss_grid_3d}
+              k={sliceIndex}
+              onKChange={() => {}} // Disabled in split-screen
+              xLabel="α"
+              planeLabel="β"
+              trajectory={
+                dataItem.trajectory_1 && dataItem.trajectory_1.length > 0
+                  ? {
+                      traj_1: dataItem.trajectory_1,
+                      traj_2: dataItem.trajectory_2,
+                      traj_3: dataItem.trajectory_3,
+                      epochs: dataItem.trajectory_epochs || [],
+                    }
+                  : undefined
+              }
+            />
+          );
+        } else {
+          // Simplified 2D slice for alpha/beta axes
+          return (
+            <LossLandscape2D
+              X={(() => {
+                const loss3d = dataItem.loss_grid_3d;
+                const nx = loss3d.length;
+                const ny = loss3d[0]?.length || 0;
+                const nz = loss3d[0]?.[0]?.length || 0;
+                const { xVals, yVals } = volumeAxesItem;
+
+                if (sliceAxis === 'alpha') {
+                  const rows = ny;
+                  const cols = nz;
+                  const grid: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0));
+                  for (let j = 0; j < rows; j++) {
+                    const beta = yVals[j] ?? 0;
+                    for (let kk = 0; kk < cols; kk++) {
+                      grid[j][kk] = beta;
+                    }
+                  }
+                  return grid;
+                } else {
+                  const rows = nx;
+                  const cols = nz;
+                  const grid: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0));
+                  for (let i = 0; i < rows; i++) {
+                    const alpha = xVals[i] ?? 0;
+                    for (let kk = 0; kk < cols; kk++) {
+                      grid[i][kk] = alpha;
+                    }
+                  }
+                  return grid;
+                }
+              })()}
+              Y={(() => {
+                const loss3d = dataItem.loss_grid_3d;
+                const nz = loss3d[0]?.[0]?.length || 0;
+                const cols = nz;
+                if (!cols) return [[]];
+                const { zVals } = volumeAxesItem;
+
+                if (sliceAxis === 'alpha') {
+                  const ny = loss3d[0]?.length || 0;
+                  const rows = ny;
+                  const grid: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0));
+                  for (let j = 0; j < rows; j++) {
+                    for (let kk = 0; kk < cols; kk++) {
+                      grid[j][kk] = zVals[kk] ?? kk;
+                    }
+                  }
+                  return grid;
+                } else {
+                  const nx = loss3d.length;
+                  const rows = nx;
+                  const grid: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0));
+                  for (let i = 0; i < rows; i++) {
+                    for (let kk = 0; kk < cols; kk++) {
+                      grid[i][kk] = zVals[kk] ?? kk;
+                    }
+                  }
+                  return grid;
+                }
+              })()}
+              lossGrid={(() => {
+                const loss3d = dataItem.loss_grid_3d;
+                const nx = loss3d.length;
+                const ny = loss3d[0]?.length || 0;
+                const nz = loss3d[0]?.[0]?.length || 0;
+                const k = Math.max(0, sliceIndex);
+
+                if (sliceAxis === 'alpha') {
+                  const i = Math.min(k, nx - 1);
+                  const rows = ny;
+                  const cols = nz;
+                  const out: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0));
+                  for (let j = 0; j < rows; j++) {
+                    for (let kk = 0; kk < cols; kk++) {
+                      out[j][kk] = loss3d[i]?.[j]?.[kk] ?? 0;
+                    }
+                  }
+                  return out;
+                } else {
+                  const j = Math.min(k, ny - 1);
+                  const rows = nx;
+                  const cols = nz;
+                  const out: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0));
+                  for (let i = 0; i < rows; i++) {
+                    for (let kk = 0; kk < cols; kk++) {
+                      out[i][kk] = loss3d[i]?.[j]?.[kk] ?? 0;
+                    }
+                  }
+                  return out;
+                }
+              })()}
+              xLabel={sliceAxis === 'alpha' ? 'β' : 'α'}
+              planeLabel="γ"
+              trajectory={sliceTrajectoryItem?.projected}
+              trajectoryHighlight={sliceTrajectoryItem?.highlight}
+            />
+          );
+        }
+      } else {
+        // 3D slice mode
+        if (sliceAxis === 'gamma') {
+          return (
+            <LossLandscape3D
+              X={(() => {
+                const { xVals, yVals } = volumeAxesItem;
+                if (!xVals.length || !yVals.length) return dataItem.X;
+                return Array.from({ length: xVals.length }, (_, _i) =>
+                  Array.from({ length: yVals.length }, (_, _j) => xVals[_i])
+                );
+              })()}
+              Y={(() => {
+                const { xVals, yVals } = volumeAxesItem;
+                if (!xVals.length || !yVals.length) return dataItem.Y;
+                return Array.from({ length: xVals.length }, (_, _i) =>
+                  Array.from({ length: yVals.length }, (_, _j) => yVals[_j])
+                );
+              })()}
+              lossGrid={(() => {
+                const rows = dataItem.loss_grid_3d.length;
+                const cols = dataItem.loss_grid_3d[0]?.length || 0;
+                const k = Math.min(Math.max(sliceIndex, 0), sliceMetaItem.nz ? sliceMetaItem.nz - 1 : 0);
+                const out: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0));
+                for (let i = 0; i < rows; i++) {
+                  for (let j = 0; j < cols; j++) {
+                    out[i][j] = dataItem.loss_grid_3d[i][j][k] ?? 0;
+                  }
+                }
+                return out;
+              })()}
+              baselineLoss={dataItem.baseline_loss}
+              trajectory={sliceTrajectoryItem?.projected}
+              trajectoryHighlight={sliceTrajectoryItem?.highlight}
+            />
+          );
+        } else {
+          // Similar logic for alpha/beta axes - simplified
+          return (
+            <LossLandscape3D
+              X={(() => {
+                const loss3d = dataItem.loss_grid_3d;
+                const nx = loss3d.length;
+                const ny = loss3d[0]?.length || 0;
+                const nz = loss3d[0]?.[0]?.length || 0;
+                const { xVals, yVals } = volumeAxesItem;
+
+                if (sliceAxis === 'alpha') {
+                  const rows = ny;
+                  const cols = nz;
+                  const grid: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0));
+                  for (let j = 0; j < rows; j++) {
+                    const beta = yVals[j] ?? 0;
+                    for (let kk = 0; kk < cols; kk++) {
+                      grid[j][kk] = beta;
+                    }
+                  }
+                  return grid;
+                } else {
+                  const rows = nx;
+                  const cols = nz;
+                  const grid: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0));
+                  for (let i = 0; i < rows; i++) {
+                    const alpha = xVals[i] ?? 0;
+                    for (let kk = 0; kk < cols; kk++) {
+                      grid[i][kk] = alpha;
+                    }
+                  }
+                  return grid;
+                }
+              })()}
+              Y={(() => {
+                const loss3d = dataItem.loss_grid_3d;
+                const nz = loss3d[0]?.[0]?.length || 0;
+                const cols = nz;
+                if (!cols) return [[]];
+                const { zVals } = volumeAxesItem;
+
+                if (sliceAxis === 'alpha') {
+                  const ny = loss3d[0]?.length || 0;
+                  const rows = ny;
+                  const grid: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0));
+                  for (let j = 0; j < rows; j++) {
+                    for (let kk = 0; kk < cols; kk++) {
+                      grid[j][kk] = zVals[kk] ?? kk;
+                    }
+                  }
+                  return grid;
+                } else {
+                  const nx = loss3d.length;
+                  const rows = nx;
+                  const grid: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0));
+                  for (let i = 0; i < rows; i++) {
+                    for (let kk = 0; kk < cols; kk++) {
+                      grid[i][kk] = zVals[kk] ?? kk;
+                    }
+                  }
+                  return grid;
+                }
+              })()}
+              lossGrid={(() => {
+                const loss3d = dataItem.loss_grid_3d;
+                const nx = loss3d.length;
+                const ny = loss3d[0]?.length || 0;
+                const nz = loss3d[0]?.[0]?.length || 0;
+                const k = Math.max(0, sliceIndex);
+
+                if (sliceAxis === 'alpha') {
+                  const i = Math.min(k, nx - 1);
+                  const rows = ny;
+                  const cols = nz;
+                  const out: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0));
+                  for (let j = 0; j < rows; j++) {
+                    for (let kk = 0; kk < cols; kk++) {
+                      out[j][kk] = loss3d[i]?.[j]?.[kk] ?? 0;
+                    }
+                  }
+                  return out;
+                } else {
+                  const j = Math.min(k, ny - 1);
+                  const rows = nx;
+                  const cols = nz;
+                  const out: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0));
+                  for (let i = 0; i < rows; i++) {
+                    for (let kk = 0; kk < cols; kk++) {
+                      out[i][kk] = loss3d[i]?.[j]?.[kk] ?? 0;
+                    }
+                  }
+                  return out;
+                }
+              })()}
+              baselineLoss={dataItem.baseline_loss}
+              xLabel={sliceAxis === 'alpha' ? 'β' : 'α'}
+              planeLabel="γ"
+              trajectory={sliceTrajectoryItem?.projected}
+              trajectoryHighlight={sliceTrajectoryItem?.highlight}
+            />
+          );
+        }
+      }
+    }
+
+    if (viewMode === '3d' && view3DRenderMode === 'volume' && dataItem.loss_grid_3d) {
+      return (
+        <LossVolumeRender3D
+          X={(() => {
+            const { xVals, yVals } = volumeAxesItem;
+            if (!xVals.length || !yVals.length) return dataItem.X;
+            return Array.from({ length: xVals.length }, (_, _i) =>
+              Array.from({ length: yVals.length }, (_, _j) => xVals[_i])
+            );
+          })()}
+          Y={(() => {
+            const { xVals, yVals } = volumeAxesItem;
+            if (!xVals.length || !yVals.length) return dataItem.Y;
+            return Array.from({ length: xVals.length }, (_, _i) =>
+              Array.from({ length: yVals.length }, (_, _j) => yVals[_j])
+            );
+          })()}
+          Z={volumeAxesItem.zVals}
+          lossGrid2d={dataItem.loss_grid_2d}
+          lossGrid3d={dataItem.loss_grid_3d}
+          baselineLoss={dataItem.baseline_loss}
+          trajectory={
+            dataItem.trajectory_1 && dataItem.trajectory_2
+              ? {
+                  traj_1: dataItem.trajectory_1,
+                  traj_2: dataItem.trajectory_2,
+                  traj_3: dataItem.trajectory_3,
+                  epochs: dataItem.trajectory_epochs || [],
+                }
+              : undefined
+          }
+        />
+      );
+    }
+
+    // Fallback
+    return (
+      <LossLandscape3D
+        X={dataItem.X}
+        Y={dataItem.Y}
+        lossGrid={dataItem.loss_grid_2d}
+        baselineLoss={dataItem.baseline_loss}
+        trajectory={
+          dataItem.trajectory_1
+            ? {
+                traj_1: dataItem.trajectory_1,
+                traj_2: dataItem.trajectory_2,
+                traj_3: dataItem.trajectory_3,
+                epochs: dataItem.trajectory_epochs || [],
+                losses: dataItem.trajectory_data?.losses || dataItem.trajectory_losses,
+              }
+            : undefined
+        }
+      />
+    );
+  };
+
   return (
     <div className="mainWorkspace">
       <div className="sidebar">
@@ -2249,16 +3195,68 @@ export default function Page() {
         <div className="viewerToolbar">
           <div className="viewerInfo">
             <span className="viewerTitle">
-              {data ? (data.run_dir || t.viewerTitle) : t.viewerTitle}
+              {splitScreen ? (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span>{t.run1}: {data ? (data.run_dir?.split('/').pop() || data.run_dir || t.viewerTitle) : t.viewerTitle}</span>
+                  <span style={{ opacity: 0.5 }}>|</span>
+                  <span>{t.run2}: {data2 ? (data2.run_dir?.split('/').pop() || data2.run_dir || t.run2) : t.run2}</span>
+                </span>
+              ) : (
+                data ? (data.run_dir || t.viewerTitle) : t.viewerTitle
+              )}
             </span>
-            {data && (
+            {data && !splitScreen && (
               <div className="badge">
                 {data.loss_grid_3d ? '3D' : '2D'} · {t.grid} {data.grid_size || data.gridSize || t.notAvailable}
               </div>
             )}
+            {splitScreen && data && data2 && (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div className="badge">
+                  {data.loss_grid_3d ? '3D' : '2D'} · {t.grid} {data.grid_size || data.gridSize || t.notAvailable}
+                </div>
+                <div className="badge">
+                  {data2.loss_grid_3d ? '3D' : '2D'} · {t.grid} {data2.grid_size || data2.gridSize || t.notAvailable}
+                </div>
+              </div>
+            )}
           </div>
           
-          {renderViewerControls()}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button
+              type="button"
+              onClick={() => {
+                setSplitScreen(!splitScreen);
+                if (!splitScreen && !selectedRun2 && availableRuns.length > 0) {
+                  // Auto-select second run if available
+                  const secondRun = availableRuns.find(r => r !== selectedRun) || availableRuns[0];
+                  setSelectedRun2(secondRun);
+                  if (secondRun) {
+                    loadFromRun(secondRun, true);
+                  }
+                }
+              }}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 6,
+                border: splitScreen ? '2px solid var(--accent)' : '1px solid var(--border)',
+                background: splitScreen ? 'rgba(249,115,22,0.15)' : 'var(--bg-lang-toggle)',
+                color: 'var(--text-primary)',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+              title={splitScreen ? t.disableSplitScreen : t.enableSplitScreen}
+            >
+              <span>⛶</span>
+              <span>{t.splitScreen}</span>
+            </button>
+            
+            {renderViewerControls()}
+          </div>
         </div>
 
         <div style={{ display: 'flex', flex: 1, minHeight: 0, gap: 12 }}>
@@ -2459,13 +3457,54 @@ export default function Page() {
           })()}
           
           {/* Right side: Main viewer */}
-          <div className="viewerCanvas" style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-          {loading && (
+          <div className="viewerCanvas" style={{ 
+            flex: 1, 
+            minWidth: 0, 
+            position: 'relative',
+            display: splitScreen ? 'flex' : 'block',
+            gap: splitScreen ? 12 : 0,
+          }}>
+          {loading && !splitScreen && (
             <div className="loadingOverlay">
               <div className="spinner" />
               <div style={{ fontSize: 14, fontWeight: 500 }}>{t.loadingOverlay}</div>
             </div>
           )}
+          
+          {splitScreen && (
+            <>
+              {/* Left panel in split-screen mode */}
+              <div style={{ flex: 1, minWidth: 0, position: 'relative', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                {loading && (
+                  <div className="loadingOverlay">
+                    <div className="spinner" />
+                    <div style={{ fontSize: 14, fontWeight: 500 }}>{t.loadingOverlay}</div>
+                  </div>
+                )}
+                <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 10, background: 'var(--bg-glass)', padding: '4px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600 }}>
+                  {t.run1}: {data ? (data.run_dir?.split('/').pop() || data.run_dir || t.viewerTitle) : t.viewerTitle}
+                </div>
+                {renderVisualization(data, error, false)}
+              </div>
+              
+              {/* Right panel in split-screen mode */}
+              <div style={{ flex: 1, minWidth: 0, position: 'relative', border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                {loading2 && (
+                  <div className="loadingOverlay">
+                    <div className="spinner" />
+                    <div style={{ fontSize: 14, fontWeight: 500 }}>{t.loadingOverlay}</div>
+                  </div>
+                )}
+                <div style={{ position: 'absolute', top: 8, left: 8, zIndex: 10, background: 'var(--bg-glass)', padding: '4px 8px', borderRadius: 4, fontSize: 12, fontWeight: 600 }}>
+                  {t.run2}: {data2 ? (data2.run_dir?.split('/').pop() || data2.run_dir || t.run2) : t.run2}
+                </div>
+                {renderVisualization(data2, error2, true)}
+              </div>
+            </>
+          )}
+          
+          {!splitScreen && (
+            <>
 
           {/* 3D Render Mode Selector - Bottom Left - optimized with DraggablePanel */}
           {viewMode === '3d' && data?.loss_grid_3d && (
@@ -3008,9 +4047,11 @@ export default function Page() {
               </div>
             </div>
           )}
+            </>
+          )}
 
           {/* Surface view 2D/3D toggle, bottom-right - optimized with DraggablePanel */}
-          {viewMode === '2d' && (
+          {!splitScreen && viewMode === '2d' && (
             <DraggablePanel
               position="bottom-right"
               style={cardVisualStyle}
@@ -3035,7 +4076,7 @@ export default function Page() {
             </DraggablePanel>
           )}
 
-          {viewMode === '3d' && view3DRenderMode === 'slice' && (
+          {!splitScreen && viewMode === '3d' && view3DRenderMode === 'slice' && (
             <>
               {/* Right-side axis + mode controls */}
               <DraggablePanel

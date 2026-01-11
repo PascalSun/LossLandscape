@@ -2,6 +2,7 @@
 Base experiment class for running ML experiments with loss landscape analysis.
 """
 
+import copy
 import os
 from datetime import datetime
 from pathlib import Path
@@ -459,11 +460,153 @@ class BaseExperiment:
 
         # Compute PCA directions if we have trajectory
         pca_directions = None
-        range_scale = 0.1
+        # Get range_scale from config, or compute from PCA if available
+        range_scale = landscape_config.get("range_scale", 0.1)
+        
+        # Load PCA directions from file if specified
+        pca_directions_path = landscape_config.get("pca_directions_path", None)
+        if pca_directions_path:
+            pca_directions_path = Path(pca_directions_path)
+            # If relative path, try relative to project root (where losslandscape is run from)
+            if not pca_directions_path.is_absolute():
+                # Try current working directory first
+                if not pca_directions_path.exists():
+                    # Try relative to this file's location (demos/base/)
+                    base_dir = Path(__file__).parent.parent.parent
+                    pca_directions_path = base_dir / pca_directions_path
+            if pca_directions_path.exists():
+                logger.info(f"Loading PCA directions from: {pca_directions_path}")
+                try:
+                    pca_data = torch.load(pca_directions_path, map_location="cpu")
+                    # Check if directions are already normalized
+                    if pca_data.get("normalized", False):
+                        # Directions are already filter-wise normalized based on training state
+                        # We'll use them directly without re-normalization
+                        pca_directions = tuple(pca_data["directions"])
+                        landscape_config["_pca_directions_normalized"] = True
+                        logger.info("Loaded pre-normalized PCA directions (will use directly without re-normalization)")
+                    else:
+                        # Old format: directions need normalization
+                        pca_directions = tuple(pca_data["directions"])
+                        landscape_config["_pca_directions_normalized"] = False
+                        logger.info("Loaded raw PCA directions (will normalize)")
+                    if "range_scale" in pca_data:
+                        range_scale = pca_data["range_scale"]
+                    logger.info(f"Loaded PCA directions. Using range_scale: {range_scale:.4f}")
+                except Exception as e:
+                    logger.warning(f"Failed to load PCA directions: {e}, will compute new ones")
+                    pca_directions_path = None
+            else:
+                logger.warning(f"PCA directions file not found: {pca_directions_path}, will compute new ones")
+        
+        # Special mode: train briefly to get PCA directions, then sample at init
+        use_pca_at_init = landscape_config.get("pca_at_init", False)
+        if use_pca_at_init and (not self._trajectory_weights or len(self._trajectory_weights) <= 1):
+            logger.info("PCA at init mode: Training briefly to get PCA directions...")
+            # Save initial state
+            initial_state = copy.deepcopy(self.model.state_dict())
+            initial_weights = self._base_weights.clone() if self._base_weights is not None else None
+            
+            # Train a few epochs to get trajectory
+            brief_epochs = landscape_config.get("pca_brief_epochs", 10)
+            logger.info(f"Training {brief_epochs} epochs to capture PCA directions...")
+            
+            # Record initial point
+            self._record_trajectory_point(-1)
+            
+            # Train briefly
+            for epoch in range(brief_epochs):
+                self.current_epoch = epoch
+                # Do a few training steps
+                self.model.train()
+                for batch_idx, (inputs, targets) in enumerate(self.train_loader):
+                    if batch_idx >= 5:  # Just a few batches per epoch
+                        break
+                    inputs = inputs.to(self.device)
+                    targets = targets.to(self.device)
+                    
+                    self.optimizer.zero_grad()
+                    outputs = self.model(inputs)
+                    loss = self.loss_fn(self.model, inputs, targets)
+                    loss.backward()
+                    self.optimizer.step()
+                
+                # Record trajectory point
+                self._record_trajectory_point(epoch)
+            
+            # Compute PCA directions from brief training
+            if len(self._trajectory_weights) > 1:
+                pca_directions, computed_range_scale = self._compute_pca_directions()
+                if "range_scale" not in landscape_config:
+                    range_scale = computed_range_scale
+                logger.info(f"PCA directions computed. Using range_scale: {range_scale:.4f}")
+                
+                # Save PCA directions if requested
+                # IMPORTANT: Save the normalized directions (after filter-wise normalization)
+                # so they can be used directly without re-normalization
+                save_pca_path = landscape_config.get("save_pca_directions", None)
+                if save_pca_path:
+                    save_pca_path = Path(save_pca_path)
+                    # If relative path, save relative to project root
+                    if not save_pca_path.is_absolute():
+                        base_dir = Path(__file__).parent.parent.parent
+                        save_pca_path = base_dir / save_pca_path
+                    save_pca_path.parent.mkdir(parents=True, exist_ok=True)
+                    # Save normalized directions (already filter-wise normalized)
+                    normalized_dirs = [self._normalize_direction_filterwise(d) for d in pca_directions]
+                    torch.save({
+                        "directions": [d.cpu() for d in normalized_dirs],
+                        "raw_directions": [d.cpu() for d in pca_directions],  # Also save raw for reference
+                        "range_scale": range_scale,
+                        "normalized": True,  # Flag indicating these are already normalized
+                    }, save_pca_path)
+                    logger.info(f"Saved PCA directions (normalized) to: {save_pca_path}")
+                
+                # Restore initial state
+                logger.info("Restoring model to initial state for landscape sampling...")
+                self.model.load_state_dict(initial_state)
+                if initial_weights is not None:
+                    self._base_weights = initial_weights
+                # Clear trajectory (we'll use PCA directions but not trajectory data)
+                self._trajectory_weights = []
+                self._trajectory_epochs = []
+            else:
+                logger.warning("Failed to get trajectory from brief training, using random directions")
+                use_pca_at_init = False
 
-        if self._trajectory_weights and len(self._trajectory_weights) > 1:
-            pca_directions, range_scale = self._compute_pca_directions()
-            logger.info(f"PCA range_scale: {range_scale:.4f}")
+        if self._trajectory_weights and len(self._trajectory_weights) > 1 and not use_pca_at_init and not pca_directions:
+            pca_directions, computed_range_scale = self._compute_pca_directions()
+            # Use computed range_scale if not explicitly set in config
+            if "range_scale" not in landscape_config:
+                range_scale = computed_range_scale
+            logger.info(f"Using range_scale: {range_scale:.4f}")
+            
+            # Save PCA directions if requested
+            # IMPORTANT: Save normalized directions based on current model state
+            save_pca_path = landscape_config.get("save_pca_directions", None)
+            if save_pca_path:
+                save_pca_path = Path(save_pca_path)
+                # If relative path, save relative to project root
+                if not save_pca_path.is_absolute():
+                    base_dir = Path(__file__).parent.parent.parent
+                    save_pca_path = base_dir / save_pca_path
+                save_pca_path.parent.mkdir(parents=True, exist_ok=True)
+                # Normalize directions based on current model parameters
+                normalized_dirs = [self._normalize_direction_filterwise(d) for d in pca_directions]
+                # Also save current model parameters for reference
+                current_params = []
+                for param in self.model.parameters():
+                    if param.requires_grad:
+                        current_params.append(param.data.flatten().cpu().clone())
+                current_flat = torch.cat(current_params) if current_params else None
+                torch.save({
+                    "directions": [d.cpu() for d in normalized_dirs],
+                    "raw_directions": [d.cpu() for d in pca_directions],  # Also save raw
+                    "range_scale": range_scale,
+                    "normalized": True,
+                    "model_params": current_flat,  # Save model params for reference
+                }, save_pca_path)
+                logger.info(f"Saved PCA directions (normalized) to: {save_pca_path}")
 
         # Create explorer
         with Explorer(
@@ -481,6 +624,17 @@ class BaseExperiment:
                 self._restore_trajectory(explorer)
 
             # Direction setup
+            # Check if directions are pre-normalized (loaded from file)
+            pca_directions_normalized = landscape_config.get("_pca_directions_normalized", False)
+            
+            if pca_directions:
+                # Mark directions as pre-normalized if loaded from file
+                if pca_directions_normalized:
+                    explorer._pca_directions_pre_normalized = True
+                    logger.info("Using pre-normalized PCA directions (will skip re-normalization)")
+                else:
+                    explorer._pca_directions_pre_normalized = False
+                
             dir_1d = pca_directions[0] if pca_directions else None
             dirs_2d = (pca_directions[0], pca_directions[1]) if pca_directions else None
             dirs_3d = pca_directions if pca_directions else None

@@ -37,6 +37,7 @@ landscape:
   grid_size_1d: 100
   grid_size_2d: 30
   grid_size_3d: 16
+  range_scale: 0.1  # Sampling range (±range_scale). Increase to see wider landscape (e.g., 0.5 or 1.0)
   record_trajectory: false  # No trajectory for no_train
   compute_hessian: true
   hessian_top_k: 5

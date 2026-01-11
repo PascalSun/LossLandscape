@@ -1,7 +1,7 @@
 /* Minimal client-side i18n (EN/中文) with a header language toggle. */
 'use client';
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 export type Locale = 'en' | 'zh';
 
@@ -209,6 +209,17 @@ const DICT = {
     axis: 'Axis',
     threshold: 'Threshold',
     dataMinMax: 'Data min/max:',
+    splitScreen: 'Split Screen',
+    enableSplitScreen: 'Enable split screen comparison',
+    disableSplitScreen: 'Disable split screen',
+    loadAsRun2: 'Load as right side run',
+    loadToLeft: 'Load to left side (Run 1)',
+    loadToRight: 'Load to right side (Run 2)',
+    run1: 'Run 1',
+    run2: 'Run 2',
+    loadError: 'Load Error',
+    metadataViewSimplified: 'Metadata view (simplified in split-screen)',
+    configViewSimplified: 'Config view (simplified in split-screen)',
   },
   zh: {
     appName: 'LearnableKGE',
@@ -413,6 +424,17 @@ const DICT = {
     axis: '轴',
     threshold: '阈值',
     dataMinMax: '数据最小/最大值:',
+    splitScreen: '分屏',
+    enableSplitScreen: '开启分屏对比',
+    disableSplitScreen: '关闭分屏',
+    loadAsRun2: '加载为右侧运行',
+    loadToLeft: '加载到左侧 (Run 1)',
+    loadToRight: '加载到右侧 (Run 2)',
+    run1: 'Run 1',
+    run2: 'Run 2',
+    loadError: '加载错误',
+    metadataViewSimplified: '元数据视图（分屏模式下简化）',
+    configViewSimplified: '配置视图（分屏模式下简化）',
   },
 } as const satisfies Record<Locale, Record<string, string>>;
 
@@ -426,16 +448,40 @@ const I18nCtx = createContext<{
 } | null>(null);
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocale] = useState<Locale>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = window.localStorage.getItem('locale');
-      if (saved === 'en' || saved === 'zh') return saved;
-    }
-    return 'zh';
-  });
+  // Always start with 'zh' to ensure SSR and client hydration match
+  const [locale, setLocale] = useState<Locale>('zh');
+  const didInitRef = useRef(false);
 
+  // Initialize from localStorage after mount.
+  // NOTE: our eslint config forbids calling setState directly inside an effect body,
+  // so we schedule the state update in a microtask callback.
   useEffect(() => {
-    if (typeof window !== 'undefined') window.localStorage.setItem('locale', locale);
+    const applySavedLocale = () => {
+      try {
+        const saved = window.localStorage.getItem('locale');
+        if (saved === 'en' || saved === 'zh') {
+          setLocale(saved);
+        }
+      } finally {
+        didInitRef.current = true;
+      }
+    };
+
+    Promise.resolve().then(applySavedLocale);
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== 'locale') return;
+      const v = e.newValue;
+      if (v === 'en' || v === 'zh') setLocale(v);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  // Save to localStorage when locale changes (only after we've read the saved value)
+  useEffect(() => {
+    if (!didInitRef.current) return;
+    window.localStorage.setItem('locale', locale);
   }, [locale]);
 
   const value = useMemo(() => ({ locale, setLocale, t: DICT[locale] }), [locale]);

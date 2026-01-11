@@ -1,0 +1,63 @@
+# Configuration 1: Initial Landscape with PCA Directions
+# 
+# Goal: See the landscape at initialization using SAME PCA directions as config 2
+# Method: Load PCA directions from config 2, restore to init, then sample
+#
+# IMPORTANT: Run config 2 FIRST to generate pca_directions.pt file
+# Then this config will load those directions for consistent comparison
+
+experiment:
+  name: "burgers_mse_init_pca"
+  project: "burgers"
+  description: "Initial landscape using PCA directions from config 2 (same direction)"
+  seed: 42  # CRITICAL: Same seed for all configs
+  tags: ["burgers", "mse", "init", "pca", "comparison"]
+
+dataset:
+  name: "burgers"
+  num_samples: 2000
+  batch_size: 64
+  num_workers: 0
+  nu: 0.05
+  noise_std: 0.01
+  val_split: 0.1
+
+model:
+  name: "mlp"
+  params:
+    hidden_sizes: [256, 256, 128, 64]
+    activation: "silu"
+
+training:
+  epochs: 0  # No training - will load PCA directions from config 2
+  optimizer:
+    name: "adam"
+    lr: 0.001
+    weight_decay: 0.0
+  scheduler: null
+  loss: "burgers_mse"
+
+landscape:
+  enabled: true
+  # Same resolution for all configs
+  grid_size_1d: 200
+  grid_size_2d: 50      # 50x50 = 2500 points
+  grid_size_3d: 20      # 20x20x20 = 8000 points
+  
+  # CRITICAL: Load PCA directions from config 2
+  # Path relative to project root (same as config 2's save path)
+  pca_directions_path: "demos/configs/wide_landscape_comparison/pca_directions.pt"
+  
+  # Fallback: If pca_directions_path doesn't exist, use pca_at_init mode
+  # This will train briefly to get PCA directions (may differ from config 2)
+  # Set to false if you want to require the PCA file
+  pca_at_init: true
+  pca_brief_epochs: 20
+  
+  # CRITICAL: Same range_scale as config 2
+  range_scale: 1.5  # Wide range to see full landscape
+  
+  record_trajectory: false  # Don't need full trajectory
+  compute_hessian: true
+  hessian_top_k: 5
+  directions: "pca"  # Use PCA directions

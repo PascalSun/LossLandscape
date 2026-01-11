@@ -397,9 +397,18 @@ class Explorer:
             dir1, dir2 = self._generate_random_directions()
         else:
             dir1, dir2 = directions
-            # 确保方向已归一化
-            dir1 = self._normalize_direction_filterwise(dir1)
-            dir2 = self._normalize_direction_filterwise(dir2)
+            # 如果方向已经归一化（从文件加载的），跳过重新归一化
+            # 这样可以确保在不同位置（初始vs训练后）使用完全相同的方向
+            if (
+                hasattr(self, "_pca_directions_pre_normalized")
+                and self._pca_directions_pre_normalized
+            ):
+                # 方向已经归一化，直接使用
+                pass
+            else:
+                # 确保方向已归一化
+                dir1 = self._normalize_direction_filterwise(dir1)
+                dir2 = self._normalize_direction_filterwise(dir2)
 
         # 存储方向（用于后续轨迹可视化）
         self._fixed_directions = (dir1, dir2)
@@ -519,8 +528,16 @@ class Explorer:
             dir1 = self._normalize_direction_filterwise(rand)
         else:
             dir1 = direction
-            # 确保方向已归一化
-            dir1 = self._normalize_direction_filterwise(dir1)
+            # 如果方向已经归一化（从文件加载的），跳过重新归一化
+            if (
+                hasattr(self, "_pca_directions_pre_normalized")
+                and self._pca_directions_pre_normalized
+            ):
+                # 方向已经归一化，直接使用
+                pass
+            else:
+                # 确保方向已归一化
+                dir1 = self._normalize_direction_filterwise(dir1)
 
         # 存储方向（用于后续轨迹可视化）
         self._fixed_directions = (dir1, dir1)  # 对于1D，两个方向相同
@@ -627,9 +644,18 @@ class Explorer:
             dir1, dir2, dir3 = self._generate_random_directions_3d()
         else:
             dir1, dir2, dir3 = directions
-            dir1 = self._normalize_direction_filterwise(dir1)
-            dir2 = self._normalize_direction_filterwise(dir2)
-            dir3 = self._normalize_direction_filterwise(dir3)
+            # 如果方向已经归一化（从文件加载的），跳过重新归一化
+            if (
+                hasattr(self, "_pca_directions_pre_normalized")
+                and self._pca_directions_pre_normalized
+            ):
+                # 方向已经归一化，直接使用
+                pass
+            else:
+                # 确保方向已归一化
+                dir1 = self._normalize_direction_filterwise(dir1)
+                dir2 = self._normalize_direction_filterwise(dir2)
+                dir3 = self._normalize_direction_filterwise(dir3)
 
         # 生成网格
         alpha_range = np.linspace(-range_scale, range_scale, grid_size)

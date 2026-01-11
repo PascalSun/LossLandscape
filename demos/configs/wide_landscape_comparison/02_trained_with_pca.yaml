@@ -1,0 +1,64 @@
+# Configuration 2: Trained Landscape with PCA Directions
+#
+# Goal: See the landscape at trained position using PCA directions
+# Method: Full training, compute PCA directions, save them, then sample
+#
+# IMPORTANT: Run this FIRST to generate PCA directions file
+# Then config 1 will load these directions for consistent comparison
+
+experiment:
+  name: "burgers_mse_trained_pca"
+  project: "burgers"
+  description: "Trained landscape using PCA directions (generates PCA file for config 1)"
+  seed: 42  # CRITICAL: Same seed for all configs
+  tags: ["burgers", "mse", "trained", "pca", "comparison"]
+
+dataset:
+  name: "burgers"
+  num_samples: 2000
+  batch_size: 64
+  num_workers: 0
+  nu: 0.05
+  noise_std: 0.01
+  val_split: 0.1
+
+model:
+  name: "mlp"
+  params:
+    hidden_sizes: [256, 256, 128, 64]
+    activation: "silu"
+
+training:
+  epochs: 100  # Full training
+  optimizer:
+    name: "adam"
+    lr: 0.001
+    weight_decay: 0.0
+  scheduler:
+    name: "step_lr"
+    step_size: 30
+    gamma: 0.5
+  loss: "burgers_mse"
+
+landscape:
+  enabled: true
+  # Same resolution as config 1
+  grid_size_1d: 200
+  grid_size_2d: 50      # 50x50 = 2500 points
+  grid_size_3d: 20      # 20x20x20 = 8000 points
+  
+  # CRITICAL: Same range_scale as config 1
+  range_scale: 1.5  # Same wide range
+  
+  # Record trajectory to compute PCA directions
+  record_trajectory: true
+  trajectory_interval: 1
+  
+  # CRITICAL: Save PCA directions for config 1 to use
+  # Save to a shared location that config 1 can access
+  # Using relative path from project root: demos/configs/wide_landscape_comparison/pca_directions.pt
+  save_pca_directions: "demos/configs/wide_landscape_comparison/pca_directions.pt"
+  
+  compute_hessian: true
+  hessian_top_k: 5
+  directions: "pca"  # Use PCA directions from training trajectory

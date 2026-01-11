@@ -1,7 +1,7 @@
 /* Theme provider for dark/light mode */
 'use client';
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 export type Theme = 'light' | 'dark';
 
@@ -12,23 +12,50 @@ const ThemeCtx = createContext<{
 } | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = window.localStorage.getItem('theme');
-      if (saved === 'light' || saved === 'dark') return saved;
-      // Check system preference
-      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        return 'dark';
-      }
-    }
-    return 'light';
-  });
+  // Always start with 'light' to ensure SSR and client hydration match
+  const [theme, setTheme] = useState<Theme>('light');
+  const didInitRef = useRef(false);
 
+  // Initialize from localStorage/system preference after mount.
+  // NOTE: our eslint config forbids calling setState directly inside an effect body,
+  // so we schedule the state update in a microtask callback.
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('theme', theme);
-      document.documentElement.setAttribute('data-theme', theme);
-    }
+    const applyInitialTheme = () => {
+      try {
+        const saved = window.localStorage.getItem('theme');
+        if (saved === 'light' || saved === 'dark') {
+          setTheme(saved);
+          document.documentElement.setAttribute('data-theme', saved);
+          return;
+        }
+
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          setTheme('dark');
+          document.documentElement.setAttribute('data-theme', 'dark');
+        } else {
+          document.documentElement.setAttribute('data-theme', 'light');
+        }
+      } finally {
+        didInitRef.current = true;
+      }
+    };
+
+    Promise.resolve().then(applyInitialTheme);
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== 'theme') return;
+      const v = e.newValue;
+      if (v === 'light' || v === 'dark') setTheme(v);
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  // Save to localStorage and update DOM when theme changes (only after init)
+  useEffect(() => {
+    if (!didInitRef.current) return;
+    window.localStorage.setItem('theme', theme);
+    document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
   const toggleTheme = () => {

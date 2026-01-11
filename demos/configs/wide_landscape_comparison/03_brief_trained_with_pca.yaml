@@ -1,0 +1,56 @@
+# Configuration 3: Brief Training Landscape with PCA Directions
+#
+# Goal: See the landscape after brief training (same epochs as pca_brief_epochs)
+# Method: Train same epochs as config 1's pca_brief_epochs, then sample
+#
+# This shows the landscape at the position after brief training,
+# using PCA directions. Useful for comparison with config 1.
+
+experiment:
+  name: "burgers_mse_brief_trained_pca"
+  project: "burgers"
+  description: "Brief trained landscape using PCA directions (for comparison)"
+  seed: 42  # CRITICAL: Same seed for all configs
+  tags: ["burgers", "mse", "brief_trained", "pca", "comparison"]
+
+dataset:
+  name: "burgers"
+  num_samples: 2000
+  batch_size: 64
+  num_workers: 0
+  nu: 0.05
+  noise_std: 0.01
+  val_split: 0.1
+
+model:
+  name: "mlp"
+  params:
+    hidden_sizes: [256, 256, 128, 64]
+    activation: "silu"
+
+training:
+  epochs: 20  # Same as pca_brief_epochs in config 1
+  optimizer:
+    name: "adam"
+    lr: 0.001
+    weight_decay: 0.0
+  scheduler: null
+  loss: "burgers_mse"
+
+landscape:
+  enabled: true
+  # Same resolution as other configs
+  grid_size_1d: 200
+  grid_size_2d: 50      # 50x50 = 2500 points
+  grid_size_3d: 20      # 20x20x20 = 8000 points
+  
+  # CRITICAL: Same range_scale as other configs
+  range_scale: 1.5  # Same wide range
+  
+  # Record trajectory to compute PCA directions
+  record_trajectory: true
+  trajectory_interval: 1
+  
+  compute_hessian: true
+  hessian_top_k: 5
+  directions: "pca"  # Use PCA directions from training trajectory
