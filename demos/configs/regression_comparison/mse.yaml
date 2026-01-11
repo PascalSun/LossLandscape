@@ -1,0 +1,38 @@
+# Regression MSE - Baseline
+experiment:
+  name: "regression_mse"
+  project: "regression"
+  description: "Simple regression with MSE loss"
+  seed: 42
+  tags: ["regression", "mse"]
+
+dataset:
+  name: "regression"
+  num_samples: 200
+  input_size: 10
+  output_size: 1
+  batch_size: 32
+  noise_std: 0.1
+  val_split: 0.1
+
+model:
+  name: "mlp"
+  params:
+    hidden_sizes: [32, 16]
+    activation: "relu"
+
+training:
+  epochs: 50
+  optimizer:
+    name: "adam"
+    lr: 0.01
+  loss: "regression_mse"
+
+landscape:
+  enabled: true
+  grid_size_1d: 100
+  grid_size_2d: 30
+  grid_size_3d: 16
+  record_trajectory: true
+  compute_hessian: true
+  hessian_top_k: 5

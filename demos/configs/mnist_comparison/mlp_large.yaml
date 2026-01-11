@@ -1,0 +1,39 @@
+# MNIST MLP Large - Deep network comparison
+experiment:
+  name: "mnist_mlp_large"
+  project: "mnist"
+  description: "MNIST with large MLP (4 hidden layers)"
+  seed: 42
+  tags: ["mnist", "mlp", "large"]
+
+dataset:
+  name: "mnist"
+  batch_size: 128
+  num_workers: 4
+  val_split: 0.1
+
+model:
+  name: "mlp"
+  params:
+    hidden_sizes: [512, 256, 128, 64]
+    activation: "relu"
+    dropout: 0.1
+
+training:
+  epochs: 50
+  optimizer:
+    name: "adam"
+    lr: 0.001
+  scheduler:
+    name: "cosine"
+    T_max: 50
+  loss: "cross_entropy"
+
+landscape:
+  enabled: true
+  grid_size_1d: 100
+  grid_size_2d: 30
+  grid_size_3d: 16
+  record_trajectory: true
+  compute_hessian: true
+  hessian_top_k: 5

@@ -16,16 +16,199 @@ def cli():
     pass
 
 
-@cli.command()
-@click.option(
-    "--input",
-    "-i",
+# ==================== Demo Subcommand Group ====================
+
+
+@cli.group()
+def demo():
+    """Run ML experiment demo with loss landscape analysis.
+
+    Examples:
+        losslandscape demo list
+        losslandscape demo run config.yaml
+    """
+    pass
+
+
+@demo.command("list")
+@click.option("--project", "-p", help="Show details for specific project")
+def demo_list(project):
+    """List available projects and configurations."""
+    from demos.runner import discover_projects, load_project
+
+    projects = discover_projects()
+
+    if not projects:
+        click.echo("No projects found.")
+        return
+
+    if project:
+        if project not in projects:
+            click.echo(f"Project '{project}' not found.")
+            click.echo(f"Available projects: {list(projects.keys())}")
+            return
+
+        info = projects[project]
+        click.echo(f"\n{'='*60}")
+        click.echo(f"Project: {project}")
+        click.echo(f"{'='*60}")
+        click.echo(f"Path: {info['path']}")
+        click.echo(f"\nAvailable configs:")
+        for config in info["configs"]:
+            click.echo(f"  - {config}")
+
+        try:
+            module = load_project(project)
+            if module.__doc__:
+                click.echo(f"\nDescription:")
+                click.echo(module.__doc__.strip())
+        except Exception:
+            pass
+    else:
+        click.echo(f"\n{'='*60}")
+        click.echo("Available Projects")
+        click.echo(f"{'='*60}\n")
+
+        for name, info in sorted(projects.items()):
+            click.echo(f"📁 {name}")
+            click.echo(f"   Configs: {', '.join(info['configs'])}")
+            click.echo()
+
+        click.echo("Use 'losslandscape demo list --project <name>' for more details.")
+
+
+@demo.command("run")
+@click.argument(
+    "files",
+    nargs=-1,
     type=click.Path(exists=True),
-    required=True,
-    help="Input JSON file exported from LossLandscape",
+)
+@click.option(
+    "--override",
+    "-o",
+    multiple=True,
+    help="Config overrides (e.g., training.epochs=100)",
+)
+@click.option("--output-dir", "-d", help="Output directory override")
+def demo_run(files, override, output_dir):
+    """Run experiment(s) from YAML config file(s).
+
+    FILES: YAML config file(s) or folder(s) containing configs
+
+    Examples:
+
+        # Run from a single YAML file
+        losslandscape demo run config.yaml
+
+        # Run from multiple YAML files
+        losslandscape demo run config1.yaml config2.yaml
+
+        # Run all configs in a folder
+        losslandscape demo run ./configs/
+
+        # With overrides
+        losslandscape demo run config.yaml -o training.epochs=50
+    """
+    from pathlib import Path
+
+    from demos.runner import run_from_file
+
+    if not files:
+        raise click.ClickException("Please provide at least one YAML config file or folder.")
+
+    # Collect all config files to run
+    config_files = []
+
+    for f in files:
+        p = Path(f)
+        if p.is_dir():
+            # Collect all YAML files in directory
+            config_files.extend(sorted(p.glob("*.yaml")))
+            config_files.extend(sorted(p.glob("*.yml")))
+        else:
+            config_files.append(p)
+
+    if not config_files:
+        raise click.ClickException("No YAML config files found. Please provide valid file(s) or folder(s).")
+
+    # Single file - use detailed output format
+    if len(config_files) == 1:
+        config_path = config_files[0]
+        click.echo(f"\n{'='*60}")
+        click.echo(f"Running experiment: {config_path.name}")
+        click.echo(f"{'='*60}\n")
+
+        try:
+            result = run_from_file(
+                config_path=str(config_path),
+                overrides=list(override) if override else None,
+                output_dir=output_dir,
+            )
+
+            click.echo(f"\n{'='*60}")
+            click.echo("Experiment Complete!")
+            click.echo(f"{'='*60}")
+            click.echo(f"Output: {result['output_dir']}")
+            if result.get("landscape_path"):
+                click.echo(f"Landscape: {result['landscape_path']}")
+            if result.get("final_results"):
+                fr = result["final_results"]
+                if "test_accuracy" in fr:
+                    click.echo(f"Test Accuracy: {fr['test_accuracy']:.2f}%")
+
+        except Exception as e:
+            logger.exception("Experiment failed")
+            raise click.ClickException(str(e))
+    else:
+        # Multiple files - use batch format
+        click.echo(f"\n{'='*60}")
+        click.echo(f"Running {len(config_files)} experiment(s) from file(s)")
+        click.echo(f"{'='*60}\n")
+
+        results = []
+        for i, config_path in enumerate(config_files, 1):
+            click.echo(f"\n[{i}/{len(config_files)}] Running: {config_path.name}")
+            click.echo("-" * 40)
+
+            try:
+                result = run_from_file(
+                    config_path=str(config_path),
+                    overrides=list(override) if override else None,
+                    output_dir=output_dir,
+                )
+                results.append({"file": str(config_path), "status": "success", "result": result})
+                click.echo(f"✓ {config_path.name} completed")
+                click.echo(f"  Output: {result['output_dir']}")
+            except Exception as e:
+                results.append({"file": str(config_path), "status": "failed", "error": str(e)})
+                click.echo(f"✗ {config_path.name} failed: {e}")
+                logger.exception(f"Failed to run {config_path}")
+
+        # Summary
+        click.echo(f"\n{'='*60}")
+        click.echo("Batch Summary")
+        click.echo(f"{'='*60}")
+
+        success = sum(1 for r in results if r["status"] == "success")
+        failed = len(results) - success
+
+        click.echo(f"Total: {len(results)}, Success: {success}, Failed: {failed}")
+
+        for r in results:
+            status = "✓" if r["status"] == "success" else "✗"
+            click.echo(f"  {status} {Path(r['file']).name}")
+
+
+@cli.command()
+@click.argument(
+    "input",
+    type=click.Path(exists=True),
 )
 def view(input: str):
-    """View information about exported Loss Landscape JSON data"""
+    """View information about exported Loss Landscape JSON data
+    
+    INPUT: JSON file exported from LossLandscape
+    """
     logger.info(f"Reading JSON file: {input}...")
 
     try:
@@ -97,32 +280,3 @@ def view(input: str):
         raise click.ClickException(f"View failed: {e}")
 
 
-@cli.command()
-def example():
-    """Run the complete example demonstrating all Loss Landscape features"""
-    import subprocess
-    import sys
-    from pathlib import Path
-
-    # Get the path to complete_example.py
-    # __file__ is loss_landscape/cli.py, so parent is loss_landscape/, and examples is in loss_landscape/examples/
-    examples_dir = Path(__file__).parent / "examples"
-    example_file = examples_dir / "complete_example.py"
-
-    if not example_file.exists():
-        logger.error(f"Example file not found: {example_file}")
-        raise click.ClickException(f"Example file not found: {example_file}")
-
-    logger.info("Running complete example...")
-    logger.info(f"Example file: {example_file}")
-    logger.info("=" * 60)
-
-    # Run the example
-    try:
-        subprocess.run([sys.executable, str(example_file)], check=True)
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Example failed with exit code {e.returncode}")
-        raise click.ClickException(f"Example failed: {e}")
-    except Exception as e:
-        logger.error(f"Failed to run example: {e}")
-        raise click.ClickException(f"Failed to run example: {e}")

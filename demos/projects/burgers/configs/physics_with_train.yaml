@@ -1,0 +1,49 @@
+# Burgers Equation - Physics-Informed Loss with Training Trajectory
+# Trains with PDE residual constraint and records trajectory
+
+experiment:
+  name: "burgers_physics_with_train"
+  project: "burgers"
+  description: "Burgers equation with physics-informed loss - with training trajectory"
+  seed: 42
+  tags: ["burgers", "pinn", "physics", "with_train"]
+
+dataset:
+  name: "burgers"
+  num_samples: 2000
+  batch_size: 64
+  num_workers: 0
+  nu: 0.05
+  noise_std: 0.01
+  val_split: 0.1
+
+model:
+  name: "mlp"
+  params:
+    hidden_sizes: [256, 256, 128, 64]
+    activation: "silu"
+
+training:
+  epochs: 100
+  optimizer:
+    name: "adam"
+    lr: 0.0005  # Smaller LR for physics loss
+    weight_decay: 0.0
+  scheduler:
+    name: "step_lr"
+    step_size: 30
+    gamma: 0.5
+  loss: "burgers_physics"
+  loss_params:
+    physics_weight: 0.1
+
+landscape:
+  enabled: true
+  grid_size_1d: 100
+  grid_size_2d: 30
+  grid_size_3d: 16
+  record_trajectory: true
+  trajectory_interval: 1
+  compute_hessian: true
+  hessian_top_k: 5
+  directions: "pca"

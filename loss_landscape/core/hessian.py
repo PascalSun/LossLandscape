@@ -46,11 +46,12 @@ class HessianCalculator:
                 targets = targets.to(self.device)
 
             # 1. Compute Loss
-            outputs = self.model(inputs)
+            # loss_fn signature: (model, inputs, targets) -> loss
+            # This is consistent with the Explorer API
             if targets is not None:
-                loss = self.loss_fn(outputs, targets)
+                loss = self.loss_fn(self.model, inputs, targets)
             else:
-                loss = self.loss_fn(outputs)
+                loss = self.loss_fn(self.model, inputs, None)
 
             # 2. Compute Gradients (grad L)
             params = [p for p in self.model.parameters() if p.requires_grad]

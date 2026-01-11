@@ -275,6 +275,28 @@ export async function importNpzData(
 
   const hessian = sanitizeHessian(data.hessian);
 
+  // Read config.yml if runDir is provided
+  let configYml: string | undefined = undefined;
+  if (runDir) {
+    try {
+      const PROJECT_ROOT = process.env.PROJECT_ROOT || path.join(process.cwd(), '..');
+      const runPath = path.isAbsolute(runDir) ? runDir : path.join(PROJECT_ROOT, runDir);
+      
+      // Try config.yml first, then config.yaml
+      const configYmlPath = path.join(runPath, 'config.yml');
+      const configYamlPath = path.join(runPath, 'config.yaml');
+      
+      if (fs.existsSync(configYmlPath)) {
+        configYml = fs.readFileSync(configYmlPath, 'utf-8');
+      } else if (fs.existsSync(configYamlPath)) {
+        configYml = fs.readFileSync(configYamlPath, 'utf-8');
+      }
+    } catch (e) {
+      // Silently fail if config.yml cannot be read
+      console.warn('[importNpzData] Failed to read config.yml:', e);
+    }
+  }
+
   // Build import data - only standard format
   const importData: LossLandscapeData = {
     config_path: sourceLabel,
@@ -294,6 +316,7 @@ export async function importNpzData(
     trajectory_data: trajectoryData,
     hessian,
     export_metadata: metadataToStore || undefined,
+    config_yml: configYml,
     import_source: importSource || undefined,
     import_filename: importFilename || (sourceFilePath ? path.basename(sourceFilePath) : undefined),
     imported_at: new Date(),

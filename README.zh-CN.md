@@ -153,7 +153,7 @@ LossLandscape/
 
 ```bash
 # 查看损失曲面数据信息
-losslandscape view -i ./landscape.json
+losslandscape view ./landscape.json
 
 # 运行完整示例
 losslandscape example

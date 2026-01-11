@@ -153,7 +153,7 @@ LossLandscape/
 
 ```bash
 # View landscape data info
-losslandscape view -i ./landscape.json
+losslandscape view ./landscape.json
 
 # Run the complete example
 losslandscape example

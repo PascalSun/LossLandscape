@@ -44,6 +44,8 @@ export async function GET() {
     // Scan outputs directory for run folders
     const outputsDir = join(repoRoot, 'outputs');
     let runs: string[] = [];
+    let runsTree: any = {};
+    
     if (existsSync(outputsDir)) {
       const hasLandscapeFiles = (dir: string): boolean => {
         try {
@@ -61,6 +63,7 @@ export async function GET() {
         return false;
       };
 
+      // Build flat list for backward compatibility
       const scanOutputs = (dir: string, prefix = 'outputs'): void => {
         const entries = readdirSync(dir);
         for (const entry of entries) {
@@ -81,9 +84,47 @@ export async function GET() {
       
       // Sort runs by name (most recent first if using timestamp format)
       runs = Array.from(new Set(runs)).sort().reverse();
+
+      // Build tree structure for grouped display
+      const buildTree = (dir: string, prefix = 'outputs'): any => {
+        const tree: any = { children: {}, paths: [] };
+        try {
+          const entries = readdirSync(dir).sort();
+          for (const entry of entries) {
+            const fullPath = join(dir, entry);
+            const stat = statSync(fullPath);
+            if (stat.isDirectory()) {
+              const currentPath = `${prefix}/${entry}`;
+              const hasFiles = hasLandscapeFiles(fullPath);
+              
+              // Recursively build subtree first
+              const subtree = buildTree(fullPath, currentPath);
+              const hasSubItems = subtree.paths.length > 0 || Object.keys(subtree.children).length > 0;
+              
+              // If this directory has files directly, add to paths
+              if (hasFiles) {
+                tree.paths.push(currentPath);
+              }
+              
+              // If there are sub-items (files in subdirs or nested folders), add as child
+              if (hasSubItems) {
+                tree.children[entry] = subtree;
+              } else if (hasFiles) {
+                // If only has files but no sub-items, still add as child for consistency
+                tree.children[entry] = { children: {}, paths: [] };
+              }
+            }
+          }
+        } catch {
+          // ignore
+        }
+        return tree;
+      };
+      
+      runsTree = buildTree(outputsDir);
     }
 
-    return NextResponse.json({ configs, runs });
+    return NextResponse.json({ configs, runs, runsTree });
   } catch (error: any) {
     console.error('Error listing runs/configs:', error);
     return NextResponse.json(

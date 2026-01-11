@@ -1,0 +1,45 @@
+# MNIST LeNet Configuration
+# Classic LeNet-5 style architecture
+
+experiment:
+  name: "mnist_lenet"
+  project: "mnist"
+  description: "MNIST classification with LeNet-5 style architecture"
+  seed: 42
+  tags: ["mnist", "lenet", "classic"]
+
+dataset:
+  name: "mnist"
+  batch_size: 128
+  num_workers: 4
+  val_split: 0.1
+  subset: null
+
+model:
+  name: "lenet"
+  params:
+    activation: "relu"
+
+training:
+  epochs: 30
+  optimizer:
+    name: "sgd"
+    lr: 0.01
+    momentum: 0.9
+    weight_decay: 0.0
+  scheduler:
+    name: "step_lr"
+    step_size: 10
+    gamma: 0.1
+  loss: "cross_entropy"
+
+landscape:
+  enabled: true
+  grid_size_1d: 100
+  grid_size_2d: 30
+  grid_size_3d: 16
+  record_trajectory: true
+  trajectory_interval: 1
+  compute_hessian: true
+  hessian_top_k: 5
+  directions: "pca"

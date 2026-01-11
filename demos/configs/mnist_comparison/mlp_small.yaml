@@ -1,0 +1,40 @@
+# MNIST MLP Small - Baseline comparison
+experiment:
+  name: "mnist_mlp_small"
+  project: "mnist"
+  description: "MNIST with small MLP (2 hidden layers)"
+  seed: 42
+  tags: ["mnist", "mlp", "small"]
+
+dataset:
+  name: "mnist"
+  batch_size: 128
+  num_workers: 4
+  val_split: 0.1
+
+model:
+  name: "mlp"
+  params:
+    hidden_sizes: [256, 128]
+    activation: "relu"
+    dropout: 0.0
+
+training:
+  epochs: 30
+  optimizer:
+    name: "adam"
+    lr: 0.001
+  scheduler:
+    name: "step_lr"
+    step_size: 15
+    gamma: 0.5
+  loss: "cross_entropy"
+
+landscape:
+  enabled: true
+  grid_size_1d: 100
+  grid_size_2d: 30
+  grid_size_3d: 16
+  record_trajectory: true
+  compute_hessian: true
+  hessian_top_k: 5

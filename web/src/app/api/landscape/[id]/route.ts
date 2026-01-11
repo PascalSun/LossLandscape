@@ -3,7 +3,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getLossLandscape, getConnection } from '@/lib/db';
+import { getLossLandscape, executeUpdate, executeDelete } from '@/lib/db';
 import { readExportMetadata } from '@/lib/import-npz';
 import path from 'path';
 import { existsSync, readdirSync, statSync, readFileSync } from 'fs';
@@ -142,6 +142,7 @@ export async function GET(
     // the route will still return data from the database (standalone mode)
     let loadedMetadata: any = undefined;
     let loadedHessian: any = undefined;
+    let loadedConfigYml: string | undefined = undefined;
     if (data.run_dir) {
       const loadedData = await tryLoadDataFromRunDir(data.run_dir);
       
@@ -152,42 +153,26 @@ export async function GET(
           
           // Store in database for future use (async, don't wait)
           if (!data.export_metadata) {
-            try {
-              const conn = getConnection();
-              conn.run(
-                `UPDATE loss_landscape_data SET export_metadata = ? WHERE id = ?`,
-                JSON.stringify(loadedData.metadata),
-                id,
-                (err: Error | null) => {
-                  if (err) {
-                    console.warn(`Failed to update metadata in database for id ${id}:`, err);
-                  }
-                }
-              );
-            } catch (updateErr) {
-              // Ignore update errors
-            }
+            executeUpdate(
+              `UPDATE loss_landscape_data SET export_metadata = ? WHERE id = ?`,
+              JSON.stringify(loadedData.metadata),
+              id
+            ).catch((err) => {
+              console.warn(`Failed to update metadata in database for id ${id}:`, err);
+            });
           }
         }
 
         if (loadedData.hessian && !data.hessian) {
           loadedHessian = loadedData.hessian;
           // Persist hessian so future reads don't rely on filesystem.
-          try {
-            const conn = getConnection();
-            conn.run(
-              `UPDATE loss_landscape_data SET hessian = ? WHERE id = ?`,
-              JSON.stringify(loadedData.hessian),
-              id,
-              (err: Error | null) => {
-                if (err) {
-                  console.warn(`Failed to update hessian in database for id ${id}:`, err);
-                }
-              }
-            );
-          } catch (updateErr) {
-            // Ignore update errors
-          }
+          executeUpdate(
+            `UPDATE loss_landscape_data SET hessian = ? WHERE id = ?`,
+            JSON.stringify(loadedData.hessian),
+            id
+          ).catch((err) => {
+            console.warn(`Failed to update hessian in database for id ${id}:`, err);
+          });
         }
         
         // Add trajectory losses if available
@@ -204,6 +189,36 @@ export async function GET(
           };
         }
       }
+      
+      // Try to load config.yml/config.yaml from run directory if not in database
+      if (!data.config_yml) {
+        try {
+          const runPath = path.isAbsolute(data.run_dir)
+            ? data.run_dir
+            : path.join(PROJECT_ROOT, data.run_dir);
+          const configYmlPath = path.join(runPath, 'config.yml');
+          const configYamlPath = path.join(runPath, 'config.yaml');
+          
+          if (existsSync(configYmlPath)) {
+            loadedConfigYml = readFileSync(configYmlPath, 'utf-8');
+          } else if (existsSync(configYamlPath)) {
+            loadedConfigYml = readFileSync(configYamlPath, 'utf-8');
+          }
+          
+          // Store in database for future use (async, don't wait)
+          if (loadedConfigYml) {
+            executeUpdate(
+              `UPDATE loss_landscape_data SET config_yml = ? WHERE id = ?`,
+              loadedConfigYml,
+              id
+            ).catch((err) => {
+              console.warn(`Failed to update config_yml in database for id ${id}:`, err);
+            });
+          }
+        } catch (e) {
+          console.warn(`Failed to read config.yml from run_dir ${data.run_dir}:`, e);
+        }
+      }
     }
 
     // Transform the data to match frontend expectations
@@ -211,6 +226,7 @@ export async function GET(
     const responseData: any = {
       ...data,
       hessian: data.hessian || loadedHessian,
+      config_yml: data.config_yml || loadedConfigYml,
       // Use loaded metadata if available, otherwise try to extract from export_metadata
       metadata: loadedMetadata || data.export_metadata?.metadata || 
         (data.export_metadata && typeof data.export_metadata === 'object' && 
@@ -242,34 +258,22 @@ export async function DELETE(
       );
     }
 
-    const conn = getConnection();
-    
     // Delete trajectory_points first (foreign key constraint)
-    conn.run(
+    await executeDelete(
       `DELETE FROM trajectory_points WHERE landscape_id = ?`,
-      id,
-      (err: Error | null) => {
-        if (err) {
-          console.warn(`Failed to delete trajectory_points for id ${id}:`, err);
-        }
-      }
-    );
+      id
+    ).catch((err) => {
+      console.warn(`Failed to delete trajectory_points for id ${id}:`, err);
+      // Continue even if this fails
+    });
 
     // Delete the landscape record
-    return new Promise<Response>((resolve, reject) => {
-      conn.run(
-        `DELETE FROM loss_landscape_data WHERE id = ?`,
-        id,
-        (err: Error | null) => {
-          if (err) {
-            console.error(`Failed to delete landscape id ${id}:`, err);
-            reject(err);
-          } else {
-            resolve(NextResponse.json({ success: true, id }));
-          }
-        }
-      );
-    });
+    await executeDelete(
+      `DELETE FROM loss_landscape_data WHERE id = ?`,
+      id
+    );
+
+    return NextResponse.json({ success: true, id });
   } catch (error: any) {
     console.error('API error:', error);
     return NextResponse.json(

@@ -28,6 +28,7 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get('file') as File;
+    const configFile = formData.get('configFile') as File | null;
     
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
@@ -41,6 +42,17 @@ export async function POST(request: NextRequest) {
         { error: 'File must be a .json file' },
         { status: 400 }
       );
+    }
+
+    // Read config file if provided
+    let configYml: string | undefined = undefined;
+    if (configFile) {
+      const configFileName = configFile.name.toLowerCase();
+      const isConfig = configFileName.endsWith('.yml') || configFileName.endsWith('.yaml');
+      if (isConfig) {
+        const configBytes = await configFile.arrayBuffer();
+        configYml = Buffer.from(configBytes).toString('utf-8');
+      }
     }
 
     // Save uploaded file to temporary location
@@ -92,16 +104,24 @@ export async function POST(request: NextRequest) {
         trajectory_val_losses: data.trajectory_val_losses || data.trajectory_data?.val_losses,
         trajectory_data: data.trajectory_data,
         metadata: data.metadata,
+        config_yml: configYml, // Include uploaded config.yml
       };
 
       // Import to database using unified import function
       const sourceLabel = `Uploaded: ${file.name}`;
-      const id = await importNpzData(data, sourceLabel, tempFilePath, undefined, undefined, 'upload', file.name);
+      const importData: any = { ...data };
+      if (configYml) {
+        importData.config_yml = configYml;
+      }
+      const id = await importNpzData(importData, sourceLabel, tempFilePath, undefined, undefined, 'upload', file.name);
 
       return NextResponse.json({
         success: true,
         id,
-        data,
+        data: {
+          ...data,
+          config_yml: configYml, // Ensure config_yml is included in response
+        },
         validationWarnings: validateLandscapeData(data).warnings,
       });
     } finally {

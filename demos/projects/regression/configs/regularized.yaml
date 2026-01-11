@@ -1,0 +1,46 @@
+# Simple Regression - L2 Regularized Configuration
+
+experiment:
+  name: "regression_regularized"
+  project: "regression"
+  description: "Simple regression with L2 regularization"
+  seed: 42
+  tags: ["regression", "l2", "regularized"]
+
+dataset:
+  name: "regression"
+  num_samples: 200
+  input_size: 10
+  output_size: 1
+  batch_size: 32
+  num_workers: 0
+  noise_std: 0.1
+  val_split: 0.1
+
+model:
+  name: "mlp"
+  params:
+    hidden_sizes: [32, 16]
+    activation: "relu"
+
+training:
+  epochs: 50
+  optimizer:
+    name: "adam"
+    lr: 0.01
+    weight_decay: 0.0  # Regularization handled in loss function
+  scheduler: null
+  loss: "regression_l2"
+  loss_params:
+    weight_decay: 0.01
+
+landscape:
+  enabled: true
+  grid_size_1d: 100
+  grid_size_2d: 30
+  grid_size_3d: 16
+  record_trajectory: true
+  trajectory_interval: 1
+  compute_hessian: true
+  hessian_top_k: 5
+  directions: "pca"

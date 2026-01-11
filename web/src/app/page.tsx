@@ -8,6 +8,9 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import MetricChart from './components/MetricChart';
 import Modal from './components/Modal';
 import DraggablePanel from './components/DraggablePanel';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 // Dynamically import React Three Fiber components to avoid SSR issues
 const LossLandscape3D = dynamic(() => import('./components/LossLandscape3D'), {
@@ -56,7 +59,7 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   
   // Viewer controls
-  const [viewMode, setViewMode] = useState<'1d' | '2d' | '3d' | 'metadata' | 'hessian'>('2d');
+  const [viewMode, setViewMode] = useState<'1d' | '2d' | '3d' | 'metadata' | 'hessian' | 'config'>('2d');
   const [view3DRenderMode, setView3DRenderMode] = useState<'slice' | 'volume'>('slice');
   const [sliceIndex, setSliceIndex] = useState(0);
   const [sliceMode, setSliceMode] = useState<'2d' | '3d'>('3d');
@@ -82,6 +85,8 @@ export default function Page() {
   
   // Available runs
   const [availableRuns, setAvailableRuns] = useState<string[]>([]);
+  const [runsTree, setRunsTree] = useState<any>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [listLoading, setListLoading] = useState(false);
   
   // Sidebar tabs
@@ -111,6 +116,7 @@ export default function Page() {
 
   // Upload state
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadConfigFile, setUploadConfigFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState(false);
@@ -185,6 +191,7 @@ export default function Page() {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || 'Failed to load runs');
       setAvailableRuns(json.runs || []);
+      setRunsTree(json.runsTree || null);
       
       // Set default run if the current one is not valid
       if (json.runs?.length > 0) {
@@ -198,6 +205,163 @@ export default function Page() {
       setListLoading(false);
     }
   }
+
+  const toggleFolder = (path: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  };
+
+  const renderRunTree = (tree: any, prefix = 'outputs', level = 0, renderedPaths = new Set<string>()): JSX.Element[] => {
+    const items: JSX.Element[] = [];
+    
+    // Get all folder paths that have direct files
+    const pathsSet = new Set(tree.paths || []);
+    
+    // Track paths that are rendered as folders to avoid duplicate rendering
+    const pathsRenderedAsFolders = new Set<string>();
+    
+    // Render child folders first (for grouping)
+    if (tree.children && Object.keys(tree.children).length > 0) {
+      Object.entries(tree.children).forEach(([folderName, subtree]: [string, any]) => {
+        const folderPath = `${prefix}/${folderName}`;
+        const isExpanded = expandedFolders.has(folderPath);
+        const hasDirectFiles = pathsSet.has(folderPath);
+        const hasSubItems = subtree.paths?.length > 0 || Object.keys(subtree.children || {}).length > 0;
+        
+        if (hasSubItems || hasDirectFiles) {
+          // Mark this path as rendered as a folder
+          if (hasDirectFiles) {
+            pathsRenderedAsFolders.add(folderPath);
+            renderedPaths.add(folderPath);
+          }
+          
+          items.push(
+            <div key={`folder-${folderPath}-${level}`} style={{ marginBottom: 4 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 12px',
+                  paddingLeft: `${12 + level * 20}px`,
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  background: 'rgba(128, 128, 128, 0.05)',
+                  transition: 'all 0.2s ease',
+                }}
+                onClick={() => toggleFolder(folderPath)}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(128, 128, 128, 0.1)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(128, 128, 128, 0.05)';
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
+                  <span style={{ 
+                    fontSize: 16, 
+                    marginRight: 8, 
+                    transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                    transition: 'transform 0.2s ease',
+                    display: 'inline-block',
+                    width: 12,
+                    flexShrink: 0,
+                  }}>
+                    {hasSubItems ? '▶' : ''}
+                  </span>
+                  <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {folderName}
+                  </span>
+                  {hasSubItems && (
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8, flexShrink: 0 }}>
+                      ({subtree.paths?.length || 0})
+                    </span>
+                  )}
+                </div>
+                {hasDirectFiles && (
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedRun(folderPath);
+                      loadFromRun(folderPath);
+                    }}
+                    disabled={loading}
+                    style={{ fontSize: 13, padding: '4px 12px', marginLeft: 8, flexShrink: 0 }}
+                  >
+                    {t.import}
+                  </button>
+                )}
+              </div>
+              {isExpanded && hasSubItems && (
+                <div style={{ marginLeft: 0 }}>
+                  {renderRunTree(subtree, folderPath, level + 1, renderedPaths)}
+                </div>
+              )}
+            </div>
+          );
+        }
+      });
+    }
+
+    // Render direct paths that are not already shown as folders
+    if (tree.paths && tree.paths.length > 0) {
+      tree.paths.forEach((path: string, index: number) => {
+        // Skip if this path is already rendered as a folder or already rendered
+        if (pathsRenderedAsFolders.has(path) || renderedPaths.has(path)) {
+          return;
+        }
+        
+        // Mark as rendered
+        renderedPaths.add(path);
+        
+        items.push(
+          <div
+            key={`path-${path}-${level}-${index}`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '10px 12px',
+              paddingLeft: `${12 + level * 20}px`,
+              borderRadius: 8,
+              border: selectedRun === path ? '1px solid var(--accent)' : '1px solid var(--border)',
+              background: selectedRun === path ? 'rgba(249,115,22,0.1)' : 'transparent',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              marginBottom: 4,
+            }}
+            onClick={() => setSelectedRun(path)}
+          >
+            <span style={{ fontSize: 14, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+              {path.split('/').pop()}
+            </span>
+            <button
+              className="btn btn-sm btn-primary"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedRun(path);
+                loadFromRun(path);
+              }}
+              disabled={loading}
+              style={{ fontSize: 13, padding: '4px 12px', marginLeft: 8, flexShrink: 0 }}
+            >
+              {t.import}
+            </button>
+          </div>
+        );
+      });
+    }
+
+    return items;
+  };
 
   async function loadFromRun(runPath: string) {
     setLoading(true);
@@ -247,6 +411,7 @@ export default function Page() {
         trajectory_losses: json.data?.trajectory_losses || json.data?.trajectory_data?.losses,
         trajectory_val_losses: json.data?.trajectory_val_losses || json.data?.trajectory_data?.val_losses,
         run_dir: runPath,
+        config_yml: json.data?.config_yml,
       };
       
       setData(normalizedData);
@@ -286,6 +451,7 @@ export default function Page() {
         trajectory_losses: json?.trajectory_losses || json?.trajectory_data?.losses,
         trajectory_val_losses: json?.trajectory_val_losses || json?.trajectory_data?.val_losses,
         run_dir: json?.run_dir,
+        config_yml: json?.config_yml,
       };
       
       setData(normalizedData);
@@ -400,6 +566,10 @@ export default function Page() {
         ) : availableRuns.length === 0 ? (
           <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px 0' }}>
             {t.noRunsFound}
+          </div>
+        ) : runsTree ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {renderRunTree(runsTree)}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -723,15 +893,20 @@ export default function Page() {
   function handleFileSelect(file: File) {
     const fileName = file.name.toLowerCase();
     const isJson = fileName.endsWith('.json');
+    const isConfig = fileName.endsWith('.yml') || fileName.endsWith('.yaml');
 
-    if (!isJson) {
-      setUploadError(t.fileMustBeJson);
+    if (isJson) {
+      setUploadFile(file);
+      setUploadError(null);
+      setUploadSuccess(false);
+    } else if (isConfig) {
+      setUploadConfigFile(file);
+      setUploadError(null);
+      setUploadSuccess(false);
+    } else {
+      setUploadError('File must be .json, .yml, or .yaml');
       return;
     }
-
-    setUploadFile(file);
-    setUploadError(null);
-    setUploadSuccess(false);
   }
 
   async function handleUpload() {
@@ -747,6 +922,9 @@ export default function Page() {
     try {
       const formData = new FormData();
       formData.append('file', uploadFile);
+      if (uploadConfigFile) {
+        formData.append('configFile', uploadConfigFile);
+      }
 
       const res = await fetch('/api/upload', {
         method: 'POST',
@@ -765,6 +943,7 @@ export default function Page() {
 
       setUploadSuccess(true);
       setUploadFile(null);
+      setUploadConfigFile(null);
       
       // Refresh history to show the new import
       await refreshHistory();
@@ -805,9 +984,9 @@ export default function Page() {
       return;
     }
 
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      handleFileSelect(files[0]);
+    const files = Array.from(e.dataTransfer.files);
+    for (const file of files) {
+      handleFileSelect(file);
     }
   }
 
@@ -847,24 +1026,39 @@ export default function Page() {
           <input
             id="file-input"
             type="file"
-            accept=".json"
+            accept=".json,.yml,.yaml"
+            multiple
             onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) {
+              const files = Array.from(e.target.files || []);
+              for (const file of files) {
                 handleFileSelect(file);
               }
             }}
             disabled={uploading}
             style={{ display: 'none' }}
           />
-          {uploadFile ? (
+          {(uploadFile || uploadConfigFile) ? (
             <div>
-              <div style={{ fontSize: 16, marginBottom: 8, color: 'var(--text-primary)' }}>
-                📄 {uploadFile.name}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                {t.size}: {(uploadFile.size / 1024 / 1024).toFixed(2)} MB
-              </div>
+              {uploadFile && (
+                <div style={{ marginBottom: uploadConfigFile ? 12 : 0 }}>
+                  <div style={{ fontSize: 16, marginBottom: 8, color: 'var(--text-primary)' }}>
+                    📄 {uploadFile.name}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    {t.size}: {(uploadFile.size / 1024 / 1024).toFixed(2)} MB
+                  </div>
+                </div>
+              )}
+              {uploadConfigFile && (
+                <div>
+                  <div style={{ fontSize: 16, marginBottom: 8, color: 'var(--text-primary)' }}>
+                    ⚙️ {uploadConfigFile.name}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    {t.size}: {(uploadConfigFile.size / 1024).toFixed(2)} KB
+                  </div>
+                </div>
+              )}
               <div
                 style={{
                   marginTop: 12,
@@ -875,6 +1069,7 @@ export default function Page() {
                 onClick={(e) => {
                   e.stopPropagation();
                   setUploadFile(null);
+                  setUploadConfigFile(null);
                   setUploadError(null);
                   setUploadSuccess(false);
                 }}
@@ -892,7 +1087,7 @@ export default function Page() {
                 {t.orClickToBrowse}
               </div>
               <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
-                {t.supportsJsonOnly}
+                {t.supportsJsonOnly} (Optional: config.yml/config.yaml)
               </div>
             </div>
           )}
@@ -950,6 +1145,115 @@ export default function Page() {
             t.uploadAndImport
           )}
         </button>
+      </div>
+    );
+  };
+
+  const renderConfigTab = () => {
+    if (!data || !data.config_yml) {
+      return (
+        <div className="emptyState">
+          <div className="emptyStateIcon">⚙️</div>
+          <div>
+            <h3 className="emptyStateTitle">No config.yml available</h3>
+            <p className="emptyStateDesc">This landscape data does not contain a configuration file.</p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{ 
+        padding: '32px 40px', 
+        maxWidth: '1400px',
+        margin: '0 auto',
+        minHeight: '100%',
+        background: 'var(--bg-card)'
+      }}>
+        {/* Header */}
+        <div style={{ 
+          marginBottom: 32,
+          padding: '32px 40px',
+          background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(99, 102, 241, 0.05) 50%, transparent 100%)',
+          borderRadius: 20,
+          border: '1px solid rgba(99, 102, 241, 0.2)',
+          position: 'relative',
+          overflow: 'hidden'
+        }}>
+          <div style={{
+            position: 'absolute',
+            top: -50,
+            right: -50,
+            width: 200,
+            height: 200,
+            background: 'radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 70%)',
+            borderRadius: '50%'
+          }} />
+          <div style={{ 
+            fontSize: 32, 
+            fontWeight: 800, 
+            color: 'var(--text-primary)', 
+            marginBottom: 8,
+            lineHeight: 1.2,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 16,
+            position: 'relative',
+            zIndex: 1
+          }}>
+            <div style={{
+              width: 56,
+              height: 56,
+              borderRadius: 16,
+              background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 28,
+              boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)'
+            }}>
+              ⚙️
+            </div>
+            <div>
+              <div>config.yml</div>
+              <div style={{ 
+                fontSize: 14, 
+                fontWeight: 400,
+                color: 'var(--text-muted)', 
+                marginTop: 4
+              }}>
+                Configuration file from run directory
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Config.yml Content with Syntax Highlighting */}
+        <div style={{
+          borderRadius: 12,
+          border: '1px solid var(--border)',
+          overflow: 'hidden',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
+          background: 'var(--bg-card)'
+        }}>
+          <SyntaxHighlighter
+            language="yaml"
+            style={isDark ? vscDarkPlus : oneLight}
+            customStyle={{
+              margin: 0,
+              padding: '24px 32px',
+              background: isDark ? 'rgba(30, 30, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+              fontSize: 13,
+              lineHeight: 1.8,
+              fontFamily: '"SF Mono", "Monaco", "Inconsolata", "Roboto Mono", monospace',
+            }}
+            showLineNumbers={true}
+            wrapLines={true}
+            wrapLongLines={true}
+          >
+            {data.config_yml}
+          </SyntaxHighlighter>
+        </div>
       </div>
     );
   };
@@ -1850,6 +2154,13 @@ export default function Page() {
       );
     }
     
+    // Add config.yml view if config_yml exists
+    if (data.config_yml) {
+      availableViews.push(
+        { key: 'config', label: 'Config', requires3D: false, desc: 'View configuration file' }
+      );
+    }
+    
     return (
       <div style={{ position: 'relative' }}>
         <Tooltip.Provider delayDuration={120}>
@@ -2246,6 +2557,15 @@ export default function Page() {
                 </div>
               </div>
             )
+          ) : viewMode === 'config' ? (
+            // Config.yml view
+            <div style={{ 
+              height: '100%', 
+              overflowY: 'auto',
+              background: 'var(--bg-card)'
+            }}>
+              {renderConfigTab()}
+            </div>
           ) : viewMode === 'hessian' ? (
             // Hessian view
             data && data.hessian ? (

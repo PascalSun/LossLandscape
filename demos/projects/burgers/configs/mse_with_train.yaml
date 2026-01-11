@@ -1,0 +1,47 @@
+# Burgers Equation - MSE Loss with Training Trajectory
+# Trains the model and records trajectory for visualization
+
+experiment:
+  name: "burgers_mse_with_train"
+  project: "burgers"
+  description: "Burgers equation with MSE loss - with training trajectory"
+  seed: 42
+  tags: ["burgers", "mse", "with_train"]
+
+dataset:
+  name: "burgers"
+  num_samples: 2000
+  batch_size: 64
+  num_workers: 0
+  nu: 0.05
+  noise_std: 0.01
+  val_split: 0.1
+
+model:
+  name: "mlp"
+  params:
+    hidden_sizes: [256, 256, 128, 64]
+    activation: "silu"
+
+training:
+  epochs: 100
+  optimizer:
+    name: "adam"
+    lr: 0.001
+    weight_decay: 0.0
+  scheduler:
+    name: "step_lr"
+    step_size: 30
+    gamma: 0.5
+  loss: "burgers_mse"
+
+landscape:
+  enabled: true
+  grid_size_1d: 100
+  grid_size_2d: 30
+  grid_size_3d: 16
+  record_trajectory: true
+  trajectory_interval: 1
+  compute_hessian: true
+  hessian_top_k: 5
+  directions: "pca"

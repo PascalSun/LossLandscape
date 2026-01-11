@@ -1,0 +1,46 @@
+# MNIST MLP Small Configuration
+# A simple 2-layer MLP for baseline experiments
+
+experiment:
+  name: "mnist_mlp_small"
+  project: "mnist"
+  description: "MNIST classification with a small MLP (2 hidden layers)"
+  seed: 42
+  tags: ["mnist", "mlp", "baseline"]
+
+dataset:
+  name: "mnist"
+  batch_size: 128
+  num_workers: 4
+  val_split: 0.1
+  subset: null  # Use full dataset (set to e.g. 5000 for quick tests)
+
+model:
+  name: "mlp"
+  params:
+    hidden_sizes: [256, 128]
+    activation: "relu"
+    dropout: 0.0
+
+training:
+  epochs: 30
+  optimizer:
+    name: "adam"
+    lr: 0.001
+    weight_decay: 0.0
+  scheduler:
+    name: "step_lr"
+    step_size: 15
+    gamma: 0.5
+  loss: "cross_entropy"
+
+landscape:
+  enabled: true
+  grid_size_1d: 100
+  grid_size_2d: 30
+  grid_size_3d: 16
+  record_trajectory: true
+  trajectory_interval: 1
+  compute_hessian: true
+  hessian_top_k: 5
+  directions: "pca"

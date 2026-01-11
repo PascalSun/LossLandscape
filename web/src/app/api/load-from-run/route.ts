@@ -186,6 +186,22 @@ export async function POST(request: NextRequest) {
       }, { status: 404 });
     }
 
+    // Read config.yml/config.yaml from run directory if available
+    let configYml: string | undefined = undefined;
+    try {
+      const configYmlPath = path.join(runPath, 'config.yml');
+      const configYamlPath = path.join(runPath, 'config.yaml');
+      
+      if (fs.existsSync(configYmlPath)) {
+        configYml = fs.readFileSync(configYmlPath, 'utf-8');
+      } else if (fs.existsSync(configYamlPath)) {
+        configYml = fs.readFileSync(configYamlPath, 'utf-8');
+      }
+    } catch (e) {
+      // Silently fail if config.yml cannot be read
+      console.warn('[load-from-run] Failed to read config.yml:', e);
+    }
+
     // Normalize trajectory data format
     const normalizedData = {
       ...data,
@@ -199,6 +215,8 @@ export async function POST(request: NextRequest) {
       trajectory_data: data.trajectory_data,
       // Preserve metadata if it exists
       metadata: data.metadata,
+      // Include config_yml if found
+      config_yml: configYml,
     };
 
     // Validate data before proceeding

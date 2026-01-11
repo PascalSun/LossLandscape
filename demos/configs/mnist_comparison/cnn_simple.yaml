@@ -1,0 +1,42 @@
+# MNIST CNN Simple - Convolutional comparison
+experiment:
+  name: "mnist_cnn_simple"
+  project: "mnist"
+  description: "MNIST with simple CNN (2 conv layers)"
+  seed: 42
+  tags: ["mnist", "cnn", "simple"]
+
+dataset:
+  name: "mnist"
+  batch_size: 128
+  num_workers: 4
+  val_split: 0.1
+
+model:
+  name: "cnn"
+  params:
+    channels: [32, 64]
+    kernel_size: 3
+    hidden_size: 128
+    activation: "relu"
+    batch_norm: false
+
+training:
+  epochs: 20
+  optimizer:
+    name: "adam"
+    lr: 0.001
+  scheduler:
+    name: "step_lr"
+    step_size: 10
+    gamma: 0.5
+  loss: "cross_entropy"
+
+landscape:
+  enabled: true
+  grid_size_1d: 100
+  grid_size_2d: 30
+  grid_size_3d: 16
+  record_trajectory: true
+  compute_hessian: true
+  hessian_top_k: 5

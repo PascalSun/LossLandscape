@@ -294,8 +294,9 @@ body {
 }
 
 .sidebarContent > div {
-  max-height: none;
+  max-height: 100%;
   overflow: visible;
+  width: 100%;
 }
 
 .sidebarContent::-webkit-scrollbar {
