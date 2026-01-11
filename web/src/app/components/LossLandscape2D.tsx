@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useI18n } from '../i18n';
 import { getViridisColor } from '../lib/colormap';
 import { useTheme } from '../theme';
-import { HoverCard } from './HoverCard';
 
 interface LossLandscape2DProps {
   X: number[][];
@@ -29,9 +28,6 @@ interface LossLandscape2DProps {
   planeLabel?: string;
 }
 
-function clamp01(x: number) {
-  return Math.max(0, Math.min(1, x));
-}
 
 function fmtLoss(x: number) {
   return Number.isFinite(x) ? x.toExponential(3) : String(x);
@@ -117,7 +113,8 @@ export default function LossLandscape2D({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [useLog, setUseLog] = useState(true);
   const [legendPos, setLegendPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const isDraggingLegend = useRef(false);
+  const [isDraggingLegend, setIsDraggingLegend] = useState(false);
+  const isDraggingLegendRef = useRef(false);
   const dragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const posStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   
@@ -135,7 +132,7 @@ export default function LossLandscape2D({
   const [viewEpoch, setViewEpoch] = useState<number>(maxEpoch);
 
   // Update viewEpoch if maxEpoch changes
-  useMemo(() => {
+  useEffect(() => {
     setViewEpoch(maxEpoch);
   }, [maxEpoch]);
 
@@ -199,7 +196,7 @@ export default function LossLandscape2D({
     let rafId: number | null = null;
     
     const onMove = (e: MouseEvent) => {
-      if (!isDraggingLegend.current) return;
+      if (!isDraggingLegendRef.current) return;
       
       // Throttle updates with requestAnimationFrame
       if (rafId !== null) return;
@@ -217,8 +214,9 @@ export default function LossLandscape2D({
         cancelAnimationFrame(rafId);
         rafId = null;
       }
-      if (isDraggingLegend.current) {
-        isDraggingLegend.current = false;
+      if (isDraggingLegendRef.current) {
+        isDraggingLegendRef.current = false;
+        setIsDraggingLegend(false);
       }
     };
     
@@ -232,7 +230,8 @@ export default function LossLandscape2D({
   }, []);
 
   const startLegendDrag = (e: React.MouseEvent) => {
-    isDraggingLegend.current = true;
+    isDraggingLegendRef.current = true;
+    setIsDraggingLegend(true);
     dragStart.current = { x: e.clientX, y: e.clientY };
     posStart.current = legendPos;
     e.preventDefault();
@@ -670,7 +669,6 @@ export default function LossLandscape2D({
 
       // Find nearest trajectory point
       let nearestEpoch: number | null = null;
-      let nearestTrajLoss: number | null = null;
       
       if (filteredTrajectory && filteredTrajectory.traj_1 && filteredTrajectory.traj_1.length > 0) {
         let minDistSq = Infinity;
@@ -819,7 +817,7 @@ export default function LossLandscape2D({
           lineHeight: 1.6,
           width: 300,
           boxShadow: ui.panelShadow,
-          cursor: isDraggingLegend.current ? 'grabbing' : 'grab',
+          cursor: isDraggingLegend ? 'grabbing' : 'grab',
         }}
         onMouseDown={startLegendDrag}
       >

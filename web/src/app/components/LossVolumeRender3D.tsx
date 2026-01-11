@@ -1,3 +1,5 @@
+/* eslint-disable react/no-unknown-property */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useMemo, useRef, useState, useEffect } from 'react';
@@ -284,7 +286,8 @@ function buildNormalizer3D(
   };
 }
 
-function interpolateLoss3D(
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _interpolateLoss3D(
   alpha: number,
   beta: number,
   gamma: number,
@@ -383,11 +386,11 @@ function interpolateLoss3D(
 
 function TrajectoryLine3D({
   trajectory,
-  X,
-  Y,
+  X: _X,
+  Y: _Y,
   Z,
-  lossGrid2d,
-  lossGrid3d,
+  lossGrid2d: _lossGrid2d,
+  lossGrid3d: _lossGrid3d,
   norm,
   viewEpoch,
 }: {
@@ -400,10 +403,11 @@ function TrajectoryLine3D({
   norm: Normalizer;
   viewEpoch?: number;
 }) {
-  const { points, epochs } = useMemo(() => {
+  const { points } = useMemo(() => {
     const points: THREE.Vector3[] = [];
-    const epochs: number[] = [];
     const { traj_1, traj_2, traj_3 } = trajectory;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const epochs: number[] = [];
 
     const xMin = norm.stats.xMin;
     const xMax = norm.stats.xMax;
@@ -468,10 +472,9 @@ function TrajectoryLine3D({
     // Sort by epoch (low to high) to ensure correct trajectory order
     pointData.sort((a, b) => a.epoch - b.epoch);
     
-    // Extract sorted points and epochs
-    for (const { point, epoch } of pointData) {
+    // Extract sorted points
+    for (const { point } of pointData) {
       points.push(point);
-      epochs.push(epoch);
     }
     
     console.log('[TrajectoryLine3D] Generated points:', {
@@ -494,8 +497,8 @@ function TrajectoryLine3D({
       });
     }
 
-    return { points, epochs };
-  }, [trajectory, X, Y, Z, lossGrid2d, lossGrid3d, norm, viewEpoch]);
+    return { points };
+  }, [trajectory, Z, norm, viewEpoch]);
 
   // Sample points to show (every N-th point to avoid clutter)
   const sampledIndices = useMemo(() => {
@@ -600,19 +603,21 @@ export default function LossVolumeRender3D({
   const [opacity, setOpacity] = useState(0.22);
   const [step, setStep] = useState(2);
   const [threshold, setThreshold] = useState(0.0);
-  const [useLog, setUseLog] = useState(true);
+  const [useLog] = useState(true);
   // Transfer function controls (helps visibility in dark mode)
   const [colorScale, setColorScale] = useState<'linear' | 'log'>('log');
   const [alphaGamma, setAlphaGamma] = useState(0.5);
   const [alphaFloor, setAlphaFloor] = useState(0.02);
   const [legendPos, setLegendPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const isDraggingLegend = useRef(false);
+  const [isDraggingLegend, setIsDraggingLegend] = useState(false);
+  const isDraggingLegendRef = useRef(false);
   const dragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const posStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   
   // Slider panel position and drag state
   const [sliderPanelPos, setSliderPanelPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const isDraggingSliderPanel = useRef(false);
+  const [isDraggingSliderPanel, setIsDraggingSliderPanel] = useState(false);
+  const isDraggingSliderPanelRef = useRef(false);
   const sliderDragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const sliderPosStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
@@ -665,7 +670,7 @@ export default function LossVolumeRender3D({
   const [viewEpoch, setViewEpoch] = useState<number>(maxEpoch);
 
   // Update viewEpoch if maxEpoch changes (e.g. data loaded)
-  useMemo(() => {
+  useEffect(() => {
     setViewEpoch(maxEpoch);
   }, [maxEpoch]);
 
@@ -717,12 +722,12 @@ export default function LossVolumeRender3D({
       rafId = requestAnimationFrame(() => {
         rafId = null;
         
-        if (isDraggingLegend.current) {
+        if (isDraggingLegendRef.current) {
           const dx = e.clientX - dragStart.current.x;
           const dy = e.clientY - dragStart.current.y;
           setLegendPos({ x: posStart.current.x + dx, y: posStart.current.y + dy });
         }
-        if (isDraggingSliderPanel.current) {
+        if (isDraggingSliderPanelRef.current) {
           const dx = e.clientX - sliderDragStart.current.x;
           const dy = e.clientY - sliderDragStart.current.y;
           setSliderPanelPos({ x: sliderPosStart.current.x + dx, y: sliderPosStart.current.y + dy });
@@ -735,8 +740,14 @@ export default function LossVolumeRender3D({
         cancelAnimationFrame(rafId);
         rafId = null;
       }
-      if (isDraggingLegend.current) isDraggingLegend.current = false;
-      if (isDraggingSliderPanel.current) isDraggingSliderPanel.current = false;
+      if (isDraggingLegendRef.current) {
+        isDraggingLegendRef.current = false;
+        setIsDraggingLegend(false);
+      }
+      if (isDraggingSliderPanelRef.current) {
+        isDraggingSliderPanelRef.current = false;
+        setIsDraggingSliderPanel(false);
+      }
     };
     
     window.addEventListener('mousemove', onMove, { passive: true });
@@ -749,14 +760,16 @@ export default function LossVolumeRender3D({
   }, []);
 
   const startLegendDrag = (e: React.MouseEvent) => {
-    isDraggingLegend.current = true;
+    isDraggingLegendRef.current = true;
+    setIsDraggingLegend(true);
     dragStart.current = { x: e.clientX, y: e.clientY };
     posStart.current = legendPos;
     e.preventDefault();
   };
 
   const startSliderPanelDrag = (e: React.MouseEvent) => {
-    isDraggingSliderPanel.current = true;
+    isDraggingSliderPanelRef.current = true;
+    setIsDraggingSliderPanel(true);
     sliderDragStart.current = { x: e.clientX, y: e.clientY };
     sliderPosStart.current = sliderPanelPos;
     e.preventDefault();
@@ -820,7 +833,7 @@ export default function LossVolumeRender3D({
           lineHeight: 1.6,
           width: 300,
           boxShadow: ui.panelShadow,
-          cursor: isDraggingLegend.current ? 'grabbing' : 'grab',
+          cursor: isDraggingLegend ? 'grabbing' : 'grab',
         }}
         onMouseDown={startLegendDrag}
       >
@@ -1113,7 +1126,7 @@ export default function LossVolumeRender3D({
             gap: 12, 
             alignItems: 'center', 
             marginBottom: 4,
-            cursor: isDraggingSliderPanel.current ? 'grabbing' : 'grab',
+            cursor: isDraggingSliderPanel ? 'grabbing' : 'grab',
             minWidth: 0,
           }}
           onMouseDown={startSliderPanelDrag}

@@ -19,9 +19,9 @@ export default function DraggablePanel({
 }: DraggablePanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   
-  // We keep track of position in a ref for the drag logic
-  // We don't use state for position to avoid re-renders during drag (direct DOM manipulation)
-  const currentPos = useRef({ x: initialX, y: initialY });
+  // We keep track of position in state for render, but also use ref for drag logic
+  const [currentPos, setCurrentPos] = useState({ x: initialX, y: initialY });
+  const currentPosRef = useRef({ x: initialX, y: initialY });
   const isDragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0 });
   const posStart = useRef({ x: 0, y: 0 });
@@ -51,14 +51,13 @@ export default function DraggablePanel({
         const dx = e.clientX - dragStart.current.x;
         const dy = e.clientY - dragStart.current.y;
         
-        currentPos.current = {
+        const newPos = {
           x: posStart.current.x + dx,
           y: posStart.current.y + dy
         };
         
-        if (panelRef.current) {
-          panelRef.current.style.transform = `translate(${currentPos.current.x}px, ${currentPos.current.y}px)`;
-        }
+        currentPosRef.current = newPos;
+        setCurrentPos(newPos);
       });
     };
 
@@ -92,7 +91,7 @@ export default function DraggablePanel({
     isDragging.current = true;
     setIsGrabbing(true);
     dragStart.current = { x: e.clientX, y: e.clientY };
-    posStart.current = { ...currentPos.current };
+    posStart.current = { ...currentPosRef.current };
   };
 
   return (
@@ -102,7 +101,7 @@ export default function DraggablePanel({
       style={{
         position: 'absolute',
         ...getPositionStyles(),
-        transform: `translate(${currentPos.current.x}px, ${currentPos.current.y}px)`,
+        transform: `translate(${currentPos.x}px, ${currentPos.y}px)`,
         cursor: isGrabbing ? 'grabbing' : 'grab',
         touchAction: 'none', // Prevent touch scrolling while dragging
         willChange: isGrabbing ? 'transform' : 'auto', // Hardware acceleration hint when dragging

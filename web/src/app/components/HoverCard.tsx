@@ -108,7 +108,7 @@ export function HoverCard({
       pos: { left, top },
       arrow: { side, offset },
     };
-  }, [visible, x, y, maxWidth, margin]);
+  }, [visible, x, y, maxWidth, margin, behavior]);
 
   if (!visible) return null;
 

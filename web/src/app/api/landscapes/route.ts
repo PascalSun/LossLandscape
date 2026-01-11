@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * API route to list all loss landscapes
  */
@@ -7,7 +8,7 @@ import { listLossLandscapes } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const landscapes = await listLossLandscapes();
     return NextResponse.json(landscapes);

@@ -1,10 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * API route to get loss landscape data by ID
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getLossLandscape, executeUpdate, executeDelete } from '@/lib/db';
-import { readExportMetadata } from '@/lib/import-npz';
 import path from 'path';
 import { existsSync, readdirSync, statSync, readFileSync } from 'fs';
 import { join } from 'path';
@@ -48,11 +48,11 @@ async function tryLoadDataFromRunDir(runDir: string | undefined): Promise<{ meta
               landscapeFiles.json = fullPath;
             }
           }
-        } catch (e) {
+        } catch {
           // Ignore individual file errors
         }
       }
-    } catch (e) {
+    } catch {
       // Ignore directory read errors
     }
     

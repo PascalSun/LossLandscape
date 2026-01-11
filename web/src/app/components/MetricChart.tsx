@@ -1,9 +1,8 @@
-
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  LineChart,
   Line,
   XAxis,
   YAxis,
@@ -11,7 +10,6 @@ import {
   Tooltip,
   ResponsiveContainer,
   Area,
-  AreaChart,
   ComposedChart,
   ReferenceLine
 } from 'recharts';
@@ -122,6 +120,19 @@ export default function MetricChart({
     });
   }, [epochs, values, extraSeries, yScale]);
 
+  // Unique gradient ID to avoid conflicts - use stable ID based on title
+  const gradientId = useMemo(() => {
+    const titleHash = title.replace(/\s+/g, '_');
+    // Use a hash of the title instead of random to ensure stability
+    let hash = 0;
+    for (let i = 0; i < titleHash.length; i++) {
+      const char = titleHash.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return `grad_${titleHash}_${Math.abs(hash).toString(36)}`;
+  }, [title]);
+
   if (!chartData.length) {
     return (
         <div style={{ height, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isDark ? '#555' : '#aaa', fontSize: 12, border: `1px solid ${isDark?'#333':'#eee'}`, borderRadius: 8 }}>
@@ -129,9 +140,6 @@ export default function MetricChart({
         </div>
     );
   }
-
-  // Unique gradient ID to avoid conflicts
-  const gradientId = `grad_${title.replace(/\s+/g, '_')}_${Math.random().toString(36).substr(2, 9)}`;
   const minHeight = typeof height === 'number' ? height : 160;
   const canRenderChart = measured.width > 0 && measured.height > 0;
 

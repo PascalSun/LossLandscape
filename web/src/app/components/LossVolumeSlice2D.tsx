@@ -1,8 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
 import LossLandscape2D from './LossLandscape2D';
-import { useI18n } from '../i18n';
 
 // Normalize Z input from backend:
 // - Preferred shape: 1D array [gamma_k]
@@ -50,7 +50,7 @@ export default function LossVolumeSlice2D({
   lossGrid3d,
   trajectory,
   k: kProp,
-  onKChange,
+  onKChange: _onKChange,
   xLabel,
   planeLabel,
 }: {
@@ -64,17 +64,10 @@ export default function LossVolumeSlice2D({
   xLabel?: string;
   planeLabel?: string;
 }) {
-  const { t } = useI18n();
   const [kInternal, setKInternal] = useState(0);
 
   const kMax = Math.max(0, lossGrid3d?.[0]?.[0]?.length - 1 || 0);
   const k = Math.max(0, Math.min(kProp ?? kInternal, kMax));
-
-  const setK = (val: number) => {
-    const clamped = Math.max(0, Math.min(val, kMax));
-    setKInternal(clamped);
-    onKChange?.(clamped);
-  };
 
   // Sync internal state when controlled prop changes
   useEffect(() => {
@@ -84,12 +77,11 @@ export default function LossVolumeSlice2D({
   }, [kProp, kMax]);
 
   // Compute epoch range
-  const { minEpoch, maxEpoch } = useMemo(() => {
+  const { maxEpoch } = useMemo(() => {
     if (!trajectory || !trajectory.epochs || trajectory.epochs.length === 0) {
-      return { minEpoch: 0, maxEpoch: 0 };
+      return { maxEpoch: 0 };
     }
     return {
-      minEpoch: Math.min(...trajectory.epochs),
       maxEpoch: Math.max(...trajectory.epochs),
     };
   }, [trajectory]);
@@ -97,7 +89,7 @@ export default function LossVolumeSlice2D({
   const [viewEpoch, setViewEpoch] = useState<number>(maxEpoch);
 
   // Update viewEpoch if maxEpoch changes
-  useMemo(() => {
+  useEffect(() => {
     setViewEpoch(maxEpoch);
   }, [maxEpoch]);
 

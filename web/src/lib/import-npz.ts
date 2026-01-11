@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Unified helper function for importing landscape data files
  * Only supports the standard format

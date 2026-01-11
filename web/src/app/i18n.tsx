@@ -426,12 +426,13 @@ const I18nCtx = createContext<{
 } | null>(null);
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocale] = useState<Locale>('zh');
-
-  useEffect(() => {
-    const saved = typeof window !== 'undefined' ? window.localStorage.getItem('locale') : null;
-    if (saved === 'en' || saved === 'zh') setLocale(saved);
-  }, []);
+  const [locale, setLocale] = useState<Locale>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = window.localStorage.getItem('locale');
+      if (saved === 'en' || saved === 'zh') return saved;
+    }
+    return 'zh';
+  });
 
   useEffect(() => {
     if (typeof window !== 'undefined') window.localStorage.setItem('locale', locale);

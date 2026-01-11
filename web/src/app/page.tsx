@@ -1,6 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { useI18n } from './i18n';
 import { useTheme } from './theme';
@@ -65,23 +66,6 @@ export default function Page() {
   const [sliceMode, setSliceMode] = useState<'2d' | '3d'>('3d');
   const [sliceAxis, setSliceAxis] = useState<'gamma' | 'alpha' | 'beta'>('gamma');
   const [surfaceMode, setSurfaceMode] = useState<'2d' | '3d'>('3d');
-  
-  // Draggable card positions
-  const [surfaceCardPos, setSurfaceCardPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [sliceCardPos, setSliceCardPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [renderModeCardPos, setRenderModeCardPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  // Use refs for drag state to avoid re-binding event listeners
-  const isDraggingSurfaceCard = useRef(false);
-  const isDraggingSliceCard = useRef(false);
-  const isDraggingRenderModeCard = useRef(false);
-  const surfaceCardDragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const sliceCardDragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const renderModeCardDragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const surfaceCardPosStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const sliceCardPosStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const renderModeCardPosStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  // Track cursor state for UI feedback (only update on drag start/end)
-  const [isDraggingAnyCard, setIsDraggingAnyCard] = useState(false);
   
   // Available runs
   const [availableRuns, setAvailableRuns] = useState<string[]>([]);
@@ -218,8 +202,8 @@ export default function Page() {
     });
   };
 
-  const renderRunTree = (tree: any, prefix = 'outputs', level = 0, renderedPaths = new Set<string>()): JSX.Element[] => {
-    const items: JSX.Element[] = [];
+  const renderRunTree = (tree: any, prefix = 'outputs', level = 0, renderedPaths = new Set<string>()): React.ReactElement[] => {
+    const items: React.ReactElement[] = [];
     
     // Get all folder paths that have direct files
     const pathsSet = new Set(tree.paths || []);
@@ -473,12 +457,14 @@ export default function Page() {
   useEffect(() => {
     refreshRuns();
     refreshHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Ensure each load defaults to 2D view
   useEffect(() => {
     if (!data) return;
     setViewMode('2d');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.loss_grid_3d, data?.loss_grid_2d]);
 
   // Optimize 2D/3D toggle handlers with useCallback and stopPropagation
@@ -1357,7 +1343,7 @@ export default function Page() {
             background: 'rgba(16, 185, 129, 0.08)',
             borderRadius: 4
           }}>
-            "{value}"
+            &quot;{value}&quot;
           </span>
         );
       }
@@ -1435,11 +1421,11 @@ export default function Page() {
         if (depth === 0) {
           return (
             <div style={{ marginLeft: 0, marginTop: 12, display: 'grid', gap: 12 }}>
-              {keys.map((key, idx) => (
+              {keys.map((key, _idx) => (
                 <div key={`obj-key-${key}-${depth}`} style={{ 
                   padding: '16px 18px',
                   background: depth === 0 
-                    ? (idx % 2 === 0 ? getThemeColor('rgba(59, 130, 246, 0.03)', 'rgba(148, 163, 184, 0.05)') : getThemeColor('rgba(59, 130, 246, 0.02)', 'rgba(148, 163, 184, 0.03)'))
+                    ? (_idx % 2 === 0 ? getThemeColor('rgba(59, 130, 246, 0.03)', 'rgba(148, 163, 184, 0.05)') : getThemeColor('rgba(59, 130, 246, 0.02)', 'rgba(148, 163, 184, 0.03)'))
                     : getThemeColor('rgba(59, 130, 246, 0.03)', 'rgba(148, 163, 184, 0.05)'),
                   borderRadius: 10,
                   border: '1px solid var(--border)',
@@ -1457,7 +1443,7 @@ export default function Page() {
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = depth === 0 
-                    ? (idx % 2 === 0 ? getThemeColor('rgba(59, 130, 246, 0.03)', 'rgba(148, 163, 184, 0.05)') : getThemeColor('rgba(59, 130, 246, 0.02)', 'rgba(148, 163, 184, 0.03)'))
+                    ? (_idx % 2 === 0 ? getThemeColor('rgba(59, 130, 246, 0.03)', 'rgba(148, 163, 184, 0.05)') : getThemeColor('rgba(59, 130, 246, 0.02)', 'rgba(148, 163, 184, 0.03)'))
                     : getThemeColor('rgba(59, 130, 246, 0.03)', 'rgba(148, 163, 184, 0.05)');
                   e.currentTarget.style.borderColor = 'var(--border)';
                   e.currentTarget.style.transform = 'translateX(0)';
@@ -1504,7 +1490,7 @@ export default function Page() {
         // For nested objects (depth > 0), use the original layout
         return (
           <div style={{ marginLeft: 0, marginTop: 12, display: 'grid', gap: 12 }}>
-            {keys.map((key, idx) => (
+            {keys.map((key, _idx) => (
               <div key={`obj-key-${key}-${depth}`} style={{ 
                 padding: '16px 18px',
                 background: getThemeColor('rgba(59, 130, 246, 0.03)', 'rgba(148, 163, 184, 0.05)'),
@@ -2687,15 +2673,15 @@ export default function Page() {
                       // Prefer volume axes for slice grids (volume resolution can differ from surface).
                       const { xVals, yVals } = volumeAxes;
                       if (!xVals.length || !yVals.length) return data.X;
-                      return Array.from({ length: xVals.length }, (_, i) =>
-                        Array.from({ length: yVals.length }, (_, j) => xVals[i])
+                      return Array.from({ length: xVals.length }, (_, _i) =>
+                        Array.from({ length: yVals.length }, (_, _j) => xVals[_i])
                       );
                     })()}
                     Y={(() => {
                       const { xVals, yVals } = volumeAxes;
                       if (!xVals.length || !yVals.length) return data.Y;
-                      return Array.from({ length: xVals.length }, (_, i) =>
-                        Array.from({ length: yVals.length }, (_, j) => yVals[j])
+                      return Array.from({ length: xVals.length }, (_, _i) =>
+                        Array.from({ length: yVals.length }, (_, _j) => yVals[_j])
                       );
                     })()}
                     Z={volumeAxes.zVals}
@@ -2724,11 +2710,9 @@ export default function Page() {
                               const nx = loss3d.length;
                               const ny = loss3d[0]?.length || 0;
                               const nz = loss3d[0]?.[0]?.length || 0;
-                              const k = Math.max(0, sliceIndex);
-                              const { xVals, yVals, zVals } = volumeAxes;
+                              const { xVals, yVals } = volumeAxes;
 
                               if (sliceAxis === 'alpha') {
-                                const i = Math.min(k, nx - 1);
                                 const rows = ny;
                                 const cols = nz;
                                 const grid: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0));
@@ -2740,7 +2724,6 @@ export default function Page() {
                                 }
                                 return grid;
                               } else {
-                                const j = Math.min(k, ny - 1);
                                 const rows = nx;
                                 const cols = nz;
                                 const grid: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0));
@@ -2758,9 +2741,9 @@ export default function Page() {
                             (() => {
                               const loss3d = data.loss_grid_3d;
                               const nz = loss3d[0]?.[0]?.length || 0;
-                              const { zVals } = volumeAxes;
                               const cols = nz;
                               if (!cols) return [[]];
+                              const { zVals } = volumeAxes;
 
                               if (sliceAxis === 'alpha') {
                                 const ny = loss3d[0]?.length || 0;
@@ -2832,15 +2815,15 @@ export default function Page() {
                           X={(() => {
                             const { xVals, yVals } = volumeAxes;
                             if (!xVals.length || !yVals.length) return data.X;
-                            return Array.from({ length: xVals.length }, (_, i) =>
-                              Array.from({ length: yVals.length }, (_, j) => xVals[i])
+                            return Array.from({ length: xVals.length }, (_, _i) =>
+                              Array.from({ length: yVals.length }, (_, _j) => xVals[_i])
                             );
                           })()}
                           Y={(() => {
                             const { xVals, yVals } = volumeAxes;
                             if (!xVals.length || !yVals.length) return data.Y;
-                            return Array.from({ length: xVals.length }, (_, i) =>
-                              Array.from({ length: yVals.length }, (_, j) => yVals[j])
+                            return Array.from({ length: xVals.length }, (_, _i) =>
+                              Array.from({ length: yVals.length }, (_, _j) => yVals[_j])
                             );
                           })()}
                           lossGrid={
@@ -2870,11 +2853,9 @@ export default function Page() {
                               const nx = loss3d.length;
                               const ny = loss3d[0]?.length || 0;
                               const nz = loss3d[0]?.[0]?.length || 0;
-                              const k = Math.max(0, sliceIndex);
                               const { xVals, yVals } = volumeAxes;
 
                               if (sliceAxis === 'alpha') {
-                                const i = Math.min(k, nx - 1);
                                 const rows = ny;
                                 const cols = nz;
                                 const grid: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0));
@@ -2886,7 +2867,6 @@ export default function Page() {
                                 }
                                 return grid;
                               } else {
-                                const j = Math.min(k, ny - 1);
                                 const rows = nx;
                                 const cols = nz;
                                 const grid: number[][] = Array.from({ length: rows }, () => Array(cols).fill(0));
@@ -2904,9 +2884,9 @@ export default function Page() {
                             (() => {
                               const loss3d = data.loss_grid_3d;
                               const nz = loss3d[0]?.[0]?.length || 0;
-                              const { zVals } = volumeAxes;
                               const cols = nz;
                               if (!cols) return [[]];
+                              const { zVals } = volumeAxes;
 
                               if (sliceAxis === 'alpha') {
                                 const ny = loss3d[0]?.length || 0;
@@ -2977,15 +2957,15 @@ export default function Page() {
                   X={(() => {
                     const { xVals, yVals } = volumeAxes;
                     if (!xVals.length || !yVals.length) return data.X;
-                    return Array.from({ length: xVals.length }, (_, i) =>
-                      Array.from({ length: yVals.length }, (_, j) => xVals[i])
+                    return Array.from({ length: xVals.length }, (_, _i) =>
+                      Array.from({ length: yVals.length }, (_, _j) => xVals[_i])
                     );
                   })()}
                   Y={(() => {
                     const { xVals, yVals } = volumeAxes;
                     if (!xVals.length || !yVals.length) return data.Y;
-                    return Array.from({ length: xVals.length }, (_, i) =>
-                      Array.from({ length: yVals.length }, (_, j) => yVals[j])
+                    return Array.from({ length: xVals.length }, (_, _i) =>
+                      Array.from({ length: yVals.length }, (_, _j) => yVals[_j])
                     );
                   })()}
                   Z={volumeAxes.zVals}

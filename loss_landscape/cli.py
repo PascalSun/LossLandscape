@@ -53,14 +53,14 @@ def demo_list(project):
         click.echo(f"Project: {project}")
         click.echo(f"{'='*60}")
         click.echo(f"Path: {info['path']}")
-        click.echo(f"\nAvailable configs:")
+        click.echo("\nAvailable configs:")
         for config in info["configs"]:
             click.echo(f"  - {config}")
 
         try:
             module = load_project(project)
             if module.__doc__:
-                click.echo(f"\nDescription:")
+                click.echo("\nDescription:")
                 click.echo(module.__doc__.strip())
         except Exception:
             pass
@@ -129,7 +129,9 @@ def demo_run(files, override, output_dir):
             config_files.append(p)
 
     if not config_files:
-        raise click.ClickException("No YAML config files found. Please provide valid file(s) or folder(s).")
+        raise click.ClickException(
+            "No YAML config files found. Please provide valid file(s) or folder(s)."
+        )
 
     # Single file - use detailed output format
     if len(config_files) == 1:
@@ -206,7 +208,7 @@ def demo_run(files, override, output_dir):
 )
 def view(input: str):
     """View information about exported Loss Landscape JSON data
-    
+
     INPUT: JSON file exported from LossLandscape
     """
     logger.info(f"Reading JSON file: {input}...")
@@ -278,5 +280,3 @@ def view(input: str):
     except Exception as e:
         logger.error(f"Failed to read file: {e}")
         raise click.ClickException(f"View failed: {e}")
-
-

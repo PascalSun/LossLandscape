@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * API route to load landscape data from a run directory
  * Scans the run directory for .json files and loads them

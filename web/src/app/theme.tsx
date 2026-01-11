@@ -12,19 +12,17 @@ const ThemeCtx = createContext<{
 } | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>('light');
-
-  useEffect(() => {
-    const saved = typeof window !== 'undefined' ? window.localStorage.getItem('theme') : null;
-    if (saved === 'light' || saved === 'dark') {
-      setTheme(saved);
-    } else {
+  const [theme, setTheme] = useState<Theme>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = window.localStorage.getItem('theme');
+      if (saved === 'light' || saved === 'dark') return saved;
       // Check system preference
-      if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        setTheme('dark');
+      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        return 'dark';
       }
     }
-  }, []);
+    return 'light';
+  });
 
   useEffect(() => {
     if (typeof window !== 'undefined') {

@@ -66,7 +66,8 @@ export default function LossLandscape1D({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [useLog, setUseLog] = useState(true);
   const [legendPos, setLegendPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const isDraggingLegend = useRef(false);
+  const [isDraggingLegend, setIsDraggingLegend] = useState(false);
+  const isDraggingLegendRef = useRef(false);
   const dragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const posStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const [hoverInfo, setHoverInfo] = useState<{ x: number; loss: number; px: number; py: number } | null>(null);
@@ -336,7 +337,7 @@ export default function LossLandscape1D({
     };
 
     render();
-  }, [X, lossLine, stats, useLog, isDark, baselineLoss, filteredTrajectory, trajectoryHighlight, viewEpoch, xLabel]);
+  }, [X, lossLine, stats, useLog, isDark, baselineLoss, filteredTrajectory, trajectoryHighlight, viewEpoch, xLabel, t.loss]);
 
   // Interpolate loss value for a given x coordinate
   const interpolateLoss = (x: number, XArr: number[], lossLineArr: number[]): number | null => {
@@ -377,7 +378,6 @@ export default function LossLandscape1D({
 
     const padding = { top: 40, right: 20, bottom: 40, left: 60 };
     const plotW = wrap.clientWidth - padding.left - padding.right;
-    const plotH = wrap.clientHeight - padding.top - padding.bottom;
 
     if (x < padding.left || x > wrap.clientWidth - padding.right || y < padding.top || y > wrap.clientHeight - padding.bottom) {
       setHoverInfo(null);
@@ -410,7 +410,8 @@ export default function LossLandscape1D({
   const startLegendDrag = (e: React.MouseEvent) => {
     if (e.button !== 0) return; // Only left mouse button
     e.preventDefault();
-    isDraggingLegend.current = true;
+    isDraggingLegendRef.current = true;
+    setIsDraggingLegend(true);
     dragStart.current = { x: e.clientX, y: e.clientY };
     posStart.current = { ...legendPos };
     document.addEventListener('mousemove', handleLegendDrag, { passive: true });
@@ -418,7 +419,7 @@ export default function LossLandscape1D({
   };
 
   const handleLegendDrag = (e: MouseEvent) => {
-    if (!isDraggingLegend.current) return;
+    if (!isDraggingLegendRef.current) return;
     
     // Throttle updates with requestAnimationFrame
     if (rafIdRef.current !== null) return;
@@ -436,7 +437,8 @@ export default function LossLandscape1D({
       cancelAnimationFrame(rafIdRef.current);
       rafIdRef.current = null;
     }
-    isDraggingLegend.current = false;
+    isDraggingLegendRef.current = false;
+    setIsDraggingLegend(false);
     document.removeEventListener('mousemove', handleLegendDrag);
     document.removeEventListener('mouseup', stopLegendDrag);
   };
@@ -449,6 +451,7 @@ export default function LossLandscape1D({
       document.removeEventListener('mousemove', handleLegendDrag);
       document.removeEventListener('mouseup', stopLegendDrag);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -493,7 +496,7 @@ export default function LossLandscape1D({
           lineHeight: 1.6,
           width: 300,
           boxShadow: ui.panelShadow,
-          cursor: isDraggingLegend.current ? 'grabbing' : 'grab',
+          cursor: isDraggingLegend ? 'grabbing' : 'grab',
         }}
         onMouseDown={startLegendDrag}
       >

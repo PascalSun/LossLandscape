@@ -1,3 +1,5 @@
+/* eslint-disable react/no-unknown-property */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
 import { useRef, useMemo, useState, useEffect } from 'react';
@@ -196,8 +198,7 @@ function LossSurface({
     // event.point is the intersection point in 3D space (already normalized)
     // We need to convert it back to original data space
     const normalizedX = event.point.x; // α in normalized space
-    const normalizedZ = event.point.z; // β in normalized space  
-    const normalizedY = event.point.y; // loss in normalized space
+    const normalizedZ = event.point.z; // β in normalized space
     
     // Convert back to original data space
     const alpha = normalizedX * norm.xyScale + norm.xCenter;
@@ -228,12 +229,15 @@ function LossSurface({
   };
 
   return (
+     
     <mesh 
       ref={meshRef} 
+       
       geometry={geometry}
       onPointerMove={handlePointerMove}
       onPointerOut={handlePointerOut}
     >
+      { }
       <meshStandardMaterial vertexColors side={THREE.DoubleSide} />
     </mesh>
   );
@@ -252,11 +256,8 @@ function TrajectoryLine({
   lossGrid: number[][];
   norm: Normalizer;
 }) {
-  const { points, epochs, trainingLosses, landscapeLosses } = useMemo(() => {
+  const { points } = useMemo(() => {
     const points: THREE.Vector3[] = [];
-    const epochs: number[] = [];
-    const trainingLosses: (number | null)[] = [];
-    const landscapeLosses: number[] = [];
     const { traj_1, traj_2, traj_3, losses: trajectoryLosses } = trajectory;
 
     console.log('[TrajectoryLine] Building trajectory points:', {
@@ -319,12 +320,9 @@ function TrajectoryLine({
     // Sort by epoch (low to high) to ensure correct trajectory order
     pointData.sort((a, b) => a.epoch - b.epoch);
 
-    // Extract sorted points, epochs, and losses
-    for (const { point, epoch, loss, trainingLoss } of pointData) {
+    // Extract sorted points
+    for (const { point } of pointData) {
       points.push(point);
-      epochs.push(epoch);
-      landscapeLosses.push(loss);
-      trainingLosses.push(trainingLoss);
     }
 
     // Debug: Check first and last epoch loss values
@@ -335,8 +333,8 @@ function TrajectoryLine({
       pointCount: points.length,
       firstPoint: points[0],
       lastPoint: points[points.length - 1],
-      firstEpoch: epochs[0],
-      lastEpoch: epochs[epochs.length - 1],
+      firstEpoch: firstPointData?.epoch,
+      lastEpoch: lastPointData?.epoch,
       firstLoss: firstPointData?.loss,
       lastLoss: lastPointData?.loss,
       firstAlpha: firstPointData?.alpha,
@@ -356,7 +354,7 @@ function TrajectoryLine({
       },
     });
 
-    return { points, epochs, trainingLosses, landscapeLosses };
+    return { points };
   }, [trajectory, X, Y, lossGrid, norm]);
 
   // Sample points to show (every N-th point to avoid clutter)
@@ -401,16 +399,17 @@ function TrajectoryLine({
         const isStart = i === 0;
         const isEnd = i === points.length - 1;
         const radius = isStart || isEnd ? 0.04 : 0.02;
-        const epoch = epochs[i];
-        const trainingLoss = trainingLosses[i];
-        const landscapeLoss = landscapeLosses[i];
-        
         return (
+           
           <mesh key={i} position={points[i]}>
+            { }
             <octahedronGeometry args={[radius * 1.2, 0]} />
+            { }
             <meshStandardMaterial 
               color={color} 
+               
               emissive={color}
+               
               emissiveIntensity={isStart || isEnd ? 0.3 : 0.1}
             />
           </mesh>
@@ -419,11 +418,16 @@ function TrajectoryLine({
       
       {/* Start point marker (larger) */}
       {points[0] && (
+         
         <mesh position={points[0]}>
+          { }
           <octahedronGeometry args={[0.07, 0]} />
+          { }
           <meshStandardMaterial 
             color="#00ff00" 
+             
             emissive="#00ff00"
+             
             emissiveIntensity={0.5}
           />
         </mesh>
@@ -431,11 +435,16 @@ function TrajectoryLine({
       
       {/* End point marker (larger) */}
       {points[points.length - 1] && (
+         
         <mesh position={points[points.length - 1]}>
+          { }
           <octahedronGeometry args={[0.07, 0]} />
+          { }
           <meshStandardMaterial 
             color="#ff0000" 
+             
             emissive="#ff0000"
+             
             emissiveIntensity={0.5}
           />
         </mesh>
@@ -658,12 +667,17 @@ function TrajectoryHighlight({
   return (
     <group>
       {points.map((p, i) => (
+         
         <mesh key={i} position={p}>
           {/* Octahedron looks like a 3D Diamond, aligning with the 2D view style */}
+          { }
           <octahedronGeometry args={[0.03, 0]} />
+          { }
           <meshStandardMaterial 
             color="#00ffff" 
+             
             emissive="#00ffff" 
+             
             emissiveIntensity={0.8}
             roughness={0.1}
             metalness={0.9} 
@@ -716,7 +730,8 @@ export default function LossLandscape3D({
   const [hoverInfo, setHoverInfo] = useState<{ alpha: number; beta: number; loss: number } | null>(null);
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null); // canvas-local coords
   const [legendPos, setLegendPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const isDraggingLegend = useRef(false);
+  const [isDraggingLegend, setIsDraggingLegend] = useState(false);
+  const isDraggingLegendRef = useRef(false);
   const dragStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const posStart = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const norm = useMemo(() => buildNormalizer(X, Y, lossGrid, useLog), [X, Y, lossGrid, useLog]);
@@ -738,7 +753,7 @@ export default function LossLandscape3D({
   const [viewEpoch, setViewEpoch] = useState<number>(maxEpoch);
 
   // Update viewEpoch if maxEpoch changes
-  useMemo(() => {
+  useEffect(() => {
     setViewEpoch(maxEpoch);
   }, [maxEpoch]);
 
@@ -747,7 +762,7 @@ export default function LossLandscape3D({
     let rafId: number | null = null;
     
     const onMove = (e: MouseEvent) => {
-      if (!isDraggingLegend.current) return;
+      if (!isDraggingLegendRef.current) return;
       
       // Throttle updates with requestAnimationFrame
       if (rafId !== null) return;
@@ -765,7 +780,10 @@ export default function LossLandscape3D({
         cancelAnimationFrame(rafId);
         rafId = null;
       }
-      if (isDraggingLegend.current) isDraggingLegend.current = false;
+      if (isDraggingLegendRef.current) {
+        isDraggingLegendRef.current = false;
+        setIsDraggingLegend(false);
+      }
     };
     
     window.addEventListener('mousemove', onMove, { passive: true });
@@ -778,7 +796,8 @@ export default function LossLandscape3D({
   }, []);
 
   const startLegendDrag = (e: React.MouseEvent) => {
-    isDraggingLegend.current = true;
+    isDraggingLegendRef.current = true;
+    setIsDraggingLegend(true);
     dragStart.current = { x: e.clientX, y: e.clientY };
     posStart.current = legendPos;
     e.preventDefault();
@@ -838,7 +857,7 @@ export default function LossLandscape3D({
           lineHeight: 1.6,
           width: 300,
           boxShadow: ui.panelShadow,
-          cursor: isDraggingLegend.current ? 'grabbing' : 'grab',
+          cursor: isDraggingLegend ? 'grabbing' : 'grab',
         }}
         onMouseDown={startLegendDrag}
       >
